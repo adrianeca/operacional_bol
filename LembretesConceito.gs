@@ -1,6 +1,7 @@
 /**
  * Lembretes automáticos de preenchimento de Conceito para professores.
  * Script vinculado à planilha "Planilha de Conceitos de CIAS/BOLSISTAS BOL".
+ * (Projeto Apps Script separado do webapp Controle Operacional BOL.)
  */
 
 // ====== CONFIGURAÇÃO ======

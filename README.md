@@ -21,6 +21,7 @@ Webapp em Google Apps Script para gestão operacional da unidade BOL.
 - `Migracao.gs` — Script de migração dos dados da planilha original para a nova planilha estruturada. **Já executado.**
 - `Code.gs` — Backend do webapp (a criar)
 - `Index.html` — Frontend do webapp (a criar)
+- `LembretesConceito.gs` — Script à parte, de outro projeto Apps Script (lembretes de preenchimento de Conceito de professores, vinculado à planilha de CIAS/BOLSISTAS). Não faz parte do webapp Controle Operacional BOL.
 
 ## Módulos planejados para o Webapp
 
