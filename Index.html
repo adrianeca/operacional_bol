@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle Operacional BOL — BRASAS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy-900:#0a1628;--navy-800:#0f2035;--navy-700:#162d4a;
+  --navy-600:#1e3a5f;--navy-500:#2a4d76;--navy-400:#3d6b99;
+  --navy-300:#5a8aba;--navy-200:#89afd4;--navy-100:#c0d4e9;
+  --navy-50:#e8eff7;
+  --success-600:#15803d;--success-500:#22c55e;--success-100:#dcfce7;
+  --danger-600:#dc2626;--danger-500:#ef4444;--danger-100:#fee2e2;
+  --warning-500:#f59e0b;--warning-100:#fef3c7;
+  --white:#fff;
+  --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;
+  --gray-300:#cbd5e1;--gray-400:#94a3b8;--gray-500:#64748b;--gray-600:#475569;
+  --font:'DM Sans',-apple-system,sans-serif;
+  --radius:14px;
+  --shadow-sm:0 1px 3px rgba(10,22,40,.06);
+  --shadow-md:0 4px 16px rgba(10,22,40,.1);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);min-height:100vh;line-height:1.5}
+
+.overlay {
+  position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,var(--navy-900) 0%,var(--navy-700) 60%,var(--navy-600) 100%);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+}
+.spinner {
+  width:44px;height:44px;
+  border:3px solid rgba(255,255,255,.15);border-top-color:#fff;
+  border-radius:50%;animation:spin .75s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.overlay p  {color:var(--navy-200);font-size:.9rem}
+.error-txt  {color:#fca5a5;font-weight:600;font-size:.95rem;max-width:360px;text-align:center;padding:0 16px}
+
+#screenMain {display:none;flex-direction:column;min-height:100vh}
+
+.app-header {
+  background:var(--navy-900);
+  border-bottom:1px solid rgba(255,255,255,.06);
+  padding:14px 32px;
+  display:flex;align-items:center;gap:20px;flex-wrap:wrap;
+  box-shadow:0 2px 16px rgba(10,22,40,.35);
+  position:sticky;top:0;z-index:100;
+}
+.header-brand {display:flex;align-items:center;gap:12px}
+.header-brand-icon {
+  width:38px;height:38px;border-radius:10px;
+  background:linear-gradient(135deg,var(--navy-600),var(--navy-400));
+  display:flex;align-items:center;justify-content:center;font-size:1rem;
+}
+.header-brand h1 {font-size:1rem;font-weight:700;color:#fff;letter-spacing:-.01em}
+.header-brand p  {font-size:.7rem;color:var(--navy-300);margin-top:1px}
+.header-right {margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hub-back-btn {
+  display:flex;align-items:center;gap:5px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;padding:6px 13px;
+  font-family:var(--font);font-size:.8rem;font-weight:600;color:var(--navy-200);
+  text-decoration:none;cursor:pointer;transition:background .15s,color .15s;white-space:nowrap;
+}
+.hub-back-btn:hover{background:rgba(255,255,255,.14);color:#fff}
+.user-badge {
+  display:flex;align-items:center;gap:8px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;padding:6px 14px;
+}
+.user-badge-name {font-size:.82rem;font-weight:600;color:#fff}
+.user-badge-unit {font-size:.7rem;color:var(--navy-300)}
+
+.app-body {flex:1;padding:28px 32px;width:100%;max-width:1180px;margin:0 auto}
+
+.tabs-nav {display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.tab-btn {
+  padding:10px 18px;border:1.5px solid var(--gray-200);border-radius:10px;
+  background:var(--white);cursor:pointer;
+  font-family:var(--font);font-size:.87rem;font-weight:700;color:var(--navy-700);
+  transition:background .15s,color .15s,border-color .15s;
+}
+.tab-btn:hover {border-color:var(--navy-300)}
+.tab-btn.active {background:var(--navy-900);border-color:var(--navy-900);color:#fff}
+
+.tab-panel {display:none}
+.tab-panel.active {display:block}
+
+.card {
+  background:var(--white);border:1px solid var(--gray-200);
+  border-radius:var(--radius);box-shadow:var(--shadow-sm);
+  padding:20px;margin-bottom:18px;
+}
+.card-title {font-size:.98rem;font-weight:700;color:var(--navy-800);margin-bottom:14px}
+.card-sub {font-size:.78rem;color:var(--gray-400);margin-top:-8px;margin-bottom:14px}
+
+.stat-row {display:flex;flex-wrap:wrap;gap:14px;margin-bottom:18px}
+.stat-card {
+  flex:1;min-width:160px;
+  background:var(--white);border:1px solid var(--gray-200);
+  border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow-sm);
+}
+.stat-label {font-size:.67rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--gray-400);margin-bottom:6px}
+.stat-value {font-size:1.3rem;font-weight:700;color:var(--navy-800)}
+
+.who-list {display:flex;flex-direction:column;gap:8px}
+.who-row {
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 14px;border:1px solid var(--gray-200);border-radius:10px;background:var(--gray-50);
+}
+.who-name {font-weight:700;font-size:.87rem;color:var(--navy-800)}
+.who-horario {font-size:.8rem;color:var(--gray-500)}
+.who-ajuste {font-size:.74rem;color:var(--warning-500);font-weight:600;margin-top:2px}
+
+.empty-hint {color:var(--gray-400);font-size:.85rem;font-style:italic;padding:14px 0;text-align:center}
+
+.pill {
+  display:inline-block;padding:3px 10px;border-radius:999px;
+  font-size:.7rem;font-weight:700;color:#fff;white-space:nowrap;
+}
+.status-pill {padding:4px 12px;border-radius:20px;font-size:.72rem;font-weight:700;display:inline-block}
+.status-pill.no-prazo  {background:var(--success-100);color:var(--success-600)}
+.status-pill.em-atraso {background:var(--danger-100);color:var(--danger-600)}
+.status-pill.vazio     {background:var(--gray-100);color:var(--gray-400)}
+
+.filter-row {display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.select-input, .text-input {
+  padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;
+  font-family:var(--font);font-size:.85rem;color:var(--navy-800);background:var(--white);
+  outline:none;transition:border-color .15s,box-shadow .15s;
+}
+.select-input:focus, .text-input:focus {border-color:var(--navy-500);box-shadow:0 0 0 3px rgba(42,77,118,.12)}
+
+.btn {
+  background:var(--navy-800);color:#fff;border:none;
+  padding:9px 18px;border-radius:8px;font-family:var(--font);
+  font-size:.85rem;font-weight:700;cursor:pointer;transition:background .15s;
+}
+.btn:hover {background:var(--navy-600)}
+.btn-ghost {
+  background:none;border:1.5px solid var(--gray-200);border-radius:8px;
+  padding:9px 16px;font-family:var(--font);font-size:.85rem;font-weight:600;
+  color:var(--gray-500);cursor:pointer;transition:border-color .15s,color .15s;
+}
+.btn-ghost:hover {border-color:var(--gray-300);color:var(--navy-800)}
+.btn-sm {padding:6px 12px;font-size:.78rem}
+.btn-danger {background:var(--danger-600)}
+.btn-danger:hover {background:var(--danger-500)}
+
+table.data-table {width:100%;border-collapse:collapse;font-size:.83rem}
+.data-table th, .data-table td {padding:9px 10px;text-align:left;border-bottom:1px solid var(--gray-200)}
+.data-table th {
+  background:var(--navy-800);color:#fff;font-weight:700;
+  font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;
+}
+.data-table tbody tr:hover {background:var(--gray-50)}
+.data-table td.num {text-align:center}
+
+.rot-group {margin-bottom:20px}
+.rot-group-title {
+  font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--gray-400);margin-bottom:10px;
+}
+.rot-item {
+  display:flex;align-items:center;gap:12px;
+  padding:11px 14px;border:1px solid var(--gray-200);border-radius:10px;margin-bottom:8px;background:var(--white);
+}
+.rot-item.done {background:var(--success-100);border-color:#bbf7d0}
+.rot-check {width:20px;height:20px;cursor:pointer;flex-shrink:0}
+.rot-body {flex:1}
+.rot-tarefa {font-size:.87rem;font-weight:600;color:var(--navy-800)}
+.rot-meta {font-size:.74rem;color:var(--gray-500);margin-top:2px}
+.rot-edit-btn {background:none;border:none;cursor:pointer;color:var(--gray-400);font-size:.9rem;padding:4px 6px}
+.rot-edit-btn:hover {color:var(--navy-600)}
+
+.entregas-wrap {overflow-x:auto}
+select.status-select {
+  padding:4px 6px;border:1px solid var(--gray-200);border-radius:6px;
+  font-family:var(--font);font-size:.76rem;background:var(--white);cursor:pointer;
+}
+
+.modal-backdrop {
+  position:fixed;inset:0;z-index:5000;background:rgba(10,22,40,.45);
+  display:none;align-items:center;justify-content:center;padding:16px;
+}
+.modal-backdrop.open {display:flex}
+.modal-card {
+  background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow-md);
+  width:100%;max-width:480px;padding:26px;max-height:90vh;overflow-y:auto;
+}
+.modal-title {font-size:1.05rem;font-weight:700;color:var(--navy-800)}
+.modal-label {
+  display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--gray-400);margin:14px 0 6px;
+}
+.modal-input, .modal-select, .modal-textarea {
+  width:100%;padding:10px 14px;border:1.5px solid var(--gray-200);border-radius:8px;
+  font-family:var(--font);font-size:.88rem;color:var(--navy-800);outline:none;background:var(--white);
+  transition:border-color .15s,box-shadow .15s;
+}
+.modal-textarea {resize:vertical;min-height:70px}
+.modal-input:focus, .modal-select:focus, .modal-textarea:focus {border-color:var(--navy-500);box-shadow:0 0 0 3px rgba(42,77,118,.12)}
+.modal-row {display:flex;gap:12px}
+.modal-row > div {flex:1}
+.modal-actions {display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
+.modal-status {font-size:.82rem;font-weight:600;margin-top:12px}
+.modal-status.error {color:var(--danger-600)}
+.modal-status.success {color:var(--success-600)}
+
+.toast {
+  position:fixed;bottom:24px;right:24px;z-index:6000;
+  padding:12px 20px;border-radius:10px;font-size:.85rem;font-weight:600;
+  box-shadow:var(--shadow-md);display:none;
+}
+.toast.success {background:var(--success-100);color:var(--success-600);display:block}
+.toast.error   {background:var(--danger-100);color:var(--danger-600);display:block}
+
+.section-head {display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
+
+@media(max-width:900px){
+  .app-header{padding:12px 16px}
+  .app-body{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div id="screenLoading" class="overlay" style="display:none">
+  <div class="spinner"></div>
+  <p>Carregando...</p>
+</div>
+
+<div id="screenError" class="overlay" style="display:none">
+  <div class="error-txt" id="errorMsg"></div>
+</div>
+
+<div id="screenMain">
+
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="header-brand-icon">📋</div>
+      <div>
+        <h1>Controle Operacional BOL</h1>
+        <p>BRASAS BI</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <a id="hubBackBtn" class="hub-back-btn" href="#" target="_top">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Hub
+      </a>
+      <div class="user-badge">
+        <div>
+          <div class="user-badge-name" id="hNome">—</div>
+          <div class="user-badge-unit" id="hEmail">—</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-body">
+
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+      <button class="tab-btn" data-tab="calendario" onclick="switchTab('calendario')">Calendário</button>
+      <button class="tab-btn" data-tab="rotinas" onclick="switchTab('rotinas')">Rotinas</button>
+      <button class="tab-btn" data-tab="entregas" onclick="switchTab('entregas')">Entregas</button>
+      <button class="tab-btn" data-tab="secretaria" onclick="switchTab('secretaria')">Secretaria</button>
+    </div>
+
+    <!-- ══════════════ DASHBOARD ══════════════ -->
+    <div id="tabDashboard" class="tab-panel active">
+      <div class="card">
+        <div class="card-title">Quem trabalha hoje</div>
+        <div id="dashQuemTrabalha" class="who-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Eventos da semana</div>
+        <div id="dashEventos" class="who-list"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Entregas pendentes do mês</div>
+        <div id="dashEntregas" class="who-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════ CALENDÁRIO ══════════════ -->
+    <div id="tabCalendario" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <div class="filter-row" style="margin-bottom:0">
+            <select id="calAnoFilter" class="select-input" onchange="renderCalendario()"></select>
+            <select id="calMesFilter" class="select-input" onchange="renderCalendario()">
+              <option value="">Todos os meses</option>
+            </select>
+          </div>
+          <button class="btn" onclick="abrirEventoModal()">+ Novo evento</button>
+        </div>
+        <div id="calList" class="who-list"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════ ROTINAS ══════════════ -->
+    <div id="tabRotinas" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Checklist de Rotinas</div>
+          <button class="btn" onclick="abrirRotinaModal()">+ Nova rotina</button>
+        </div>
+        <div id="rotinasList"></div>
+      </div>
+    </div>
+
+    <!-- ══════════════ ENTREGAS ══════════════ -->
+    <div id="tabEntregas" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Entregas — status por mês</div>
+          <select id="entAnoFilter" class="select-input" onchange="renderEntregas()"></select>
+        </div>
+        <div class="entregas-wrap">
+          <table class="data-table" id="entTable"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ SECRETARIA ══════════════ -->
+    <div id="tabSecretaria" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Horários fixos</div>
+          <button class="btn btn-sm" onclick="abrirHorarioModal()">+ Novo horário</button>
+        </div>
+        <table class="data-table" id="horariosTable"></table>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Escala de sábado</div>
+          <button class="btn btn-sm" onclick="abrirEscalaModal()">+ Novo sábado</button>
+        </div>
+        <table class="data-table" id="escalaTable"></table>
+      </div>
+
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Ajustes de horário</div>
+          <button class="btn btn-sm" onclick="abrirAjusteModal()">+ Novo ajuste</button>
+        </div>
+        <table class="data-table" id="ajustesTable"></table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- ── Modal: Evento ── -->
+<div id="eventoModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="eventoModalTitle">Novo evento</div>
+    <label class="modal-label">Título</label>
+    <input id="evTitulo" class="modal-input" type="text">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Data início</label>
+        <input id="evDataInicio" class="modal-input" type="date">
+      </div>
+      <div>
+        <label class="modal-label">Data fim (opcional)</label>
+        <input id="evDataFim" class="modal-input" type="date">
+      </div>
+    </div>
+    <label class="modal-label">Categoria</label>
+    <select id="evCategoria" class="modal-select">
+      <option value="OPERACIONAL">OPERACIONAL</option>
+      <option value="BRASAS_START">BRASAS_START</option>
+      <option value="BRASAS_DAY">BRASAS_DAY</option>
+      <option value="SPECIAL_CLASSES">SPECIAL_CLASSES</option>
+      <option value="FERIAS">FERIAS</option>
+      <option value="RECESSO">RECESSO</option>
+      <option value="TREINAMENTO">TREINAMENTO</option>
+      <option value="EVENTO">EVENTO</option>
+    </select>
+    <label class="modal-label">Observação (opcional)</label>
+    <textarea id="evObservacao" class="modal-textarea"></textarea>
+    <div id="eventoModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="evDeleteBtn" style="display:none;color:#fff" onclick="excluirEvento()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('eventoModal')">Cancelar</button>
+      <button class="btn" onclick="salvarEvento()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Rotina ── -->
+<div id="rotinaModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="rotinaModalTitle">Nova rotina</div>
+    <label class="modal-label">Frequência</label>
+    <select id="rotFrequencia" class="modal-select">
+      <option value="DIÁRIO">DIÁRIO</option>
+      <option value="SEMANAL">SEMANAL</option>
+      <option value="QUINZENAL">QUINZENAL</option>
+      <option value="MENSAL">MENSAL</option>
+      <option value="TRIMESTRAL">TRIMESTRAL</option>
+      <option value="SEMESTRAL">SEMESTRAL</option>
+      <option value="ANUAL">ANUAL</option>
+    </select>
+    <label class="modal-label">Tarefa</label>
+    <input id="rotTarefa" class="modal-input" type="text">
+    <label class="modal-label">Responsável</label>
+    <input id="rotResponsavel" class="modal-input" type="text" placeholder="Todas">
+    <div id="rotinaModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="rotDeleteBtn" style="display:none;color:#fff" onclick="excluirRotina()">Desativar</button>
+      <button class="btn-ghost" onclick="fecharModal('rotinaModal')">Cancelar</button>
+      <button class="btn" onclick="salvarRotina()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Horário fixo ── -->
+<div id="horarioModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title">Horário fixo</div>
+    <label class="modal-label">Nome</label>
+    <input id="hoNome" class="modal-input" type="text">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Horário padrão</label>
+        <input id="hoPadrao" class="modal-input" type="text" placeholder="09:00 - 18:00">
+      </div>
+      <div>
+        <label class="modal-label">Horário sexta</label>
+        <input id="hoSexta" class="modal-input" type="text" placeholder="08:00 - 17:00">
+      </div>
+    </div>
+    <label class="modal-label"><input type="checkbox" id="hoAtivo" checked> Ativo</label>
+    <div id="horarioModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="fecharModal('horarioModal')">Cancelar</button>
+      <button class="btn" onclick="salvarHorarioModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Escala de sábado ── -->
+<div id="escalaModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title">Escala de sábado</div>
+    <label class="modal-label">Data (sábado)</label>
+    <input id="esData" class="modal-input" type="date">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Pessoa 1</label>
+        <input id="esPessoa1" class="modal-input" type="text">
+      </div>
+      <div>
+        <label class="modal-label">Pessoa 2</label>
+        <input id="esPessoa2" class="modal-input" type="text">
+      </div>
+    </div>
+    <label class="modal-label">Pessoa 3 (opcional)</label>
+    <input id="esPessoa3" class="modal-input" type="text">
+    <label class="modal-label">Observação (opcional)</label>
+    <textarea id="esObservacao" class="modal-textarea"></textarea>
+    <div id="escalaModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="fecharModal('escalaModal')">Cancelar</button>
+      <button class="btn" onclick="salvarEscalaModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Ajuste de horário ── -->
+<div id="ajusteModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="ajusteModalTitle">Ajuste de horário</div>
+    <label class="modal-label">Descrição / Atividade</label>
+    <input id="ajAtividade" class="modal-input" type="text" placeholder="Ex: Fulana trocou de horário com Ciclana">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Data</label>
+        <input id="ajData" class="modal-input" type="date">
+      </div>
+      <div>
+        <label class="modal-label">Status</label>
+        <select id="ajStatus" class="modal-select">
+          <option value="">—</option>
+          <option value="Feito">Feito</option>
+        </select>
+      </div>
+    </div>
+    <div id="ajusteModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="ajDeleteBtn" style="display:none;color:#fff" onclick="excluirAjuste()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('ajusteModal')">Cancelar</button>
+      <button class="btn" onclick="salvarAjusteModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var TOKEN   = '<?= token ?>';
+var HUB_URL = 'https://script.google.com/a/macros/brasas.com/s/AKfycbyF7BArYMYFtcQY7_4RTGGPw89yNohAjR7eGptItP-EsnWhNfiZR2ISRaHdAkwlLSlr/exec';
+document.getElementById('hubBackBtn').href = HUB_URL;
+
+var MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+var FREQ_ORDEM = ['DIÁRIO','SEMANAL','QUINZENAL','MENSAL','TRIMESTRAL','SEMESTRAL','ANUAL'];
+var CATEGORIA_COR = {
+  BRASAS_START:'#1e3a5f', SPECIAL_CLASSES:'#7c3aed', BRASAS_DAY:'#0a1628',
+  FERIAS:'#22c55e', RECESSO:'#64748b', EVENTO:'#f59e0b', TREINAMENTO:'#0891b2',
+  OPERACIONAL:'#2a4d76'
+};
+
+var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null };
+
+// ── INIT ──────────────────────────────────────────────
+
+window.onload = function() {
+  if (!TOKEN) { window.top.location.href = HUB_URL; return; }
+  show('screenLoading');
+  google.script.run.withSuccessHandler(onUserLoaded).withFailureHandler(showError).getUserFromHub(TOKEN);
+};
+
+function onUserLoaded(user) {
+  state.user = user;
+  document.getElementById('hNome').textContent  = user.nome || user.email;
+  document.getElementById('hEmail').textContent = user.email;
+  google.script.run.withSuccessHandler(function(d){ state.dashboard = d; loadEventos(); }).withFailureHandler(showError).getDashboard(TOKEN);
+}
+function loadEventos() {
+  google.script.run.withSuccessHandler(function(d){ state.eventos = d; loadRotinas(); }).withFailureHandler(showError).getEventos(TOKEN);
+}
+function loadRotinas() {
+  google.script.run.withSuccessHandler(function(d){ state.rotinas = d; loadEntregas(); }).withFailureHandler(showError).getRotinas(TOKEN);
+}
+function loadEntregas() {
+  google.script.run.withSuccessHandler(function(d){ state.entregas = d; loadSecretaria(); }).withFailureHandler(showError).getEntregas(TOKEN);
+}
+function loadSecretaria() {
+  google.script.run.withSuccessHandler(function(d){ state.secretaria = d; onAllLoaded(); }).withFailureHandler(showError).getSecretaria(TOKEN);
+}
+
+function onAllLoaded() {
+  renderDashboard();
+  renderCalendarioFiltros();
+  renderCalendario();
+  renderRotinas();
+  renderEntregasFiltros();
+  renderEntregas();
+  renderSecretaria();
+  hideAll();
+  document.getElementById('screenMain').style.display = 'flex';
+}
+
+// ── TABS ──────────────────────────────────────────────
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', secretaria:'tabSecretaria' };
+  document.getElementById(map[tab]).classList.add('active');
+}
+
+// ── DASHBOARD ─────────────────────────────────────────
+
+function renderDashboard() {
+  var d = state.dashboard;
+
+  var quemEl = document.getElementById('dashQuemTrabalha');
+  if (!d.quemTrabalha.length) {
+    quemEl.innerHTML = '<div class="empty-hint">Ninguém escalado hoje (ou é domingo).</div>';
+  } else {
+    quemEl.innerHTML = d.quemTrabalha.map(function(p) {
+      return '<div class="who-row"><div><div class="who-name">' + esc(p.nome) + '</div>' +
+        (p.ajuste ? '<div class="who-ajuste">' + esc(p.ajuste) + '</div>' : '') + '</div>' +
+        '<div class="who-horario">' + esc(p.horario || '—') + '</div></div>';
+    }).join('');
+  }
+
+  var evEl = document.getElementById('dashEventos');
+  if (!d.eventosSemana.length) {
+    evEl.innerHTML = '<div class="empty-hint">Nenhum evento nos próximos 7 dias.</div>';
+  } else {
+    evEl.innerHTML = d.eventosSemana.map(function(e) {
+      return '<div class="who-row"><div><div class="who-name">' + esc(e.titulo) + '</div>' +
+        '<div class="who-horario">' + fmtDataBR(e.dataInicio) + (e.dataFim ? ' até ' + fmtDataBR(e.dataFim) : '') + '</div></div>' +
+        '<span class="pill" style="background:' + (CATEGORIA_COR[e.categoria] || '#64748b') + '">' + esc(e.categoria) + '</span></div>';
+    }).join('');
+  }
+
+  var entEl = document.getElementById('dashEntregas');
+  if (!d.entregasPendentes.length) {
+    entEl.innerHTML = '<div class="empty-hint">Nenhuma entrega pendente este mês. 🎉</div>';
+  } else {
+    entEl.innerHTML = d.entregasPendentes.map(function(e) {
+      return '<div class="who-row"><div><div class="who-name">' + esc(e.atividade) + '</div>' +
+        '<div class="who-horario">' + esc(e.setor) + ' · prazo: ' + esc(e.prazo) + '</div></div>' +
+        statusPill(e.status) + '</div>';
+    }).join('');
+  }
+}
+
+// ── CALENDÁRIO ────────────────────────────────────────
+
+function renderCalendarioFiltros() {
+  var anos = {};
+  state.eventos.forEach(function(e) { if (e.dataInicio) anos[e.dataInicio.slice(0,4)] = true; });
+  var anoSel = document.getElementById('calAnoFilter');
+  var anoAtual = String(new Date().getFullYear());
+  anoSel.innerHTML = '<option value="">Todos os anos</option>' +
+    Object.keys(anos).sort().map(function(a) { return '<option value="' + a + '"' + (a===anoAtual?' selected':'') + '>' + a + '</option>'; }).join('');
+
+  var mesSel = document.getElementById('calMesFilter');
+  mesSel.innerHTML = '<option value="">Todos os meses</option>' +
+    MESES.map(function(m,i) { return '<option value="' + (i+1) + '">' + m + '</option>'; }).join('');
+}
+
+function renderCalendario() {
+  var ano = document.getElementById('calAnoFilter').value;
+  var mes = document.getElementById('calMesFilter').value;
+
+  var rows = state.eventos.filter(function(e) {
+    if (!e.dataInicio) return false;
+    if (ano && e.dataInicio.slice(0,4) !== ano) return false;
+    if (mes && String(Number(e.dataInicio.slice(5,7))) !== mes) return false;
+    return true;
+  });
+
+  var el = document.getElementById('calList');
+  if (!rows.length) { el.innerHTML = '<div class="empty-hint">Nenhum evento com os filtros atuais.</div>'; return; }
+
+  el.innerHTML = rows.map(function(e) {
+    return '<div class="who-row" style="cursor:pointer" onclick="abrirEventoModal(\'' + e.id + '\')">' +
+      '<div><div class="who-name">' + esc(e.titulo) + '</div>' +
+      '<div class="who-horario">' + fmtDataBR(e.dataInicio) + (e.dataFim ? ' até ' + fmtDataBR(e.dataFim) : '') +
+      (e.observacao ? ' · ' + esc(e.observacao) : '') + '</div></div>' +
+      '<span class="pill" style="background:' + (CATEGORIA_COR[e.categoria] || '#64748b') + '">' + esc(e.categoria) + '</span></div>';
+  }).join('');
+}
+
+var eventoEditId = null;
+
+function abrirEventoModal(id) {
+  eventoEditId = id || null;
+  var e = id ? state.eventos.filter(function(x){ return x.id===id; })[0] : null;
+  document.getElementById('eventoModalTitle').textContent = e ? 'Editar evento' : 'Novo evento';
+  document.getElementById('evTitulo').value = e ? e.titulo : '';
+  document.getElementById('evDataInicio').value = e ? e.dataInicio : '';
+  document.getElementById('evDataFim').value = e ? e.dataFim : '';
+  document.getElementById('evCategoria').value = e ? e.categoria : 'OPERACIONAL';
+  document.getElementById('evObservacao').value = e ? e.observacao : '';
+  document.getElementById('eventoModalStatus').textContent = '';
+  document.getElementById('evDeleteBtn').style.display = e ? '' : 'none';
+  document.getElementById('eventoModal').classList.add('open');
+}
+
+function salvarEvento() {
+  var titulo = document.getElementById('evTitulo').value.trim();
+  var status = document.getElementById('eventoModalStatus');
+  if (!titulo) { status.textContent = 'Informe o título.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    id: eventoEditId,
+    titulo: titulo,
+    dataInicio: document.getElementById('evDataInicio').value,
+    dataFim: document.getElementById('evDataFim').value,
+    categoria: document.getElementById('evCategoria').value,
+    observacao: document.getElementById('evObservacao').value.trim()
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(list) {
+      state.eventos = list;
+      fecharModal('eventoModal');
+      renderCalendarioFiltros(); renderCalendario(); renderDashboardRefresh();
+      showToast('Evento salvo!', 'success');
+    })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveEvento(TOKEN, payload);
+}
+
+function excluirEvento() {
+  if (!eventoEditId) return;
+  if (!window.confirm('Excluir este evento?')) return;
+  google.script.run
+    .withSuccessHandler(function(list) {
+      state.eventos = list;
+      fecharModal('eventoModal');
+      renderCalendarioFiltros(); renderCalendario(); renderDashboardRefresh();
+      showToast('Evento excluído.', 'success');
+    })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
+    .deleteEvento(TOKEN, eventoEditId);
+}
+
+// ── ROTINAS ───────────────────────────────────────────
+
+function renderRotinas() {
+  var el = document.getElementById('rotinasList');
+  var porFreq = {};
+  state.rotinas.forEach(function(r) { (porFreq[r.frequencia] = porFreq[r.frequencia] || []).push(r); });
+
+  var ordem = FREQ_ORDEM.filter(function(f) { return porFreq[f]; })
+    .concat(Object.keys(porFreq).filter(function(f) { return FREQ_ORDEM.indexOf(f) === -1; }));
+
+  if (!ordem.length) { el.innerHTML = '<div class="empty-hint">Nenhuma rotina cadastrada.</div>'; return; }
+
+  el.innerHTML = ordem.map(function(freq) {
+    var itens = porFreq[freq];
+    var itensHtml = itens.map(function(r) {
+      return '<div class="rot-item' + (r.concluido ? ' done' : '') + '">' +
+        '<input type="checkbox" class="rot-check" ' + (r.concluido ? 'checked' : '') +
+        ' onchange="onToggleRotina(\'' + r.id + '\',\'' + r.periodo + '\',this.checked)">' +
+        '<div class="rot-body"><div class="rot-tarefa">' + esc(r.tarefa) + '</div>' +
+        '<div class="rot-meta">' + esc(r.responsavel) + (r.concluido ? ' · concluído por ' + esc(r.concluidoPor) + ' em ' + esc(r.concluidoEm) : '') + '</div></div>' +
+        '<button class="rot-edit-btn" onclick="abrirRotinaModal(\'' + r.id + '\')" title="Editar">&#9998;</button>' +
+        '</div>';
+    }).join('');
+    return '<div class="rot-group"><div class="rot-group-title">' + esc(freq) + '</div>' + itensHtml + '</div>';
+  }).join('');
+}
+
+function onToggleRotina(id, periodo, concluido) {
+  google.script.run
+    .withSuccessHandler(function(list) { state.rotinas = list; renderRotinas(); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderRotinas(); })
+    .toggleRotina(TOKEN, id, periodo, concluido);
+}
+
+var rotinaEditId = null;
+
+function abrirRotinaModal(id) {
+  rotinaEditId = id || null;
+  var r = id ? state.rotinas.filter(function(x){ return x.id===id; })[0] : null;
+  document.getElementById('rotinaModalTitle').textContent = r ? 'Editar rotina' : 'Nova rotina';
+  document.getElementById('rotFrequencia').value = r ? r.frequencia : 'DIÁRIO';
+  document.getElementById('rotTarefa').value = r ? r.tarefa : '';
+  document.getElementById('rotResponsavel').value = r ? r.responsavel : '';
+  document.getElementById('rotinaModalStatus').textContent = '';
+  document.getElementById('rotDeleteBtn').style.display = r ? '' : 'none';
+  document.getElementById('rotinaModal').classList.add('open');
+}
+
+function salvarRotina() {
+  var tarefa = document.getElementById('rotTarefa').value.trim();
+  var status = document.getElementById('rotinaModalStatus');
+  if (!tarefa) { status.textContent = 'Informe a tarefa.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    id: rotinaEditId,
+    frequencia: document.getElementById('rotFrequencia').value,
+    tarefa: tarefa,
+    responsavel: document.getElementById('rotResponsavel').value.trim() || 'Todas'
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(list) { state.rotinas = list; fecharModal('rotinaModal'); renderRotinas(); showToast('Rotina salva!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveRotina(TOKEN, payload);
+}
+
+function excluirRotina() {
+  if (!rotinaEditId) return;
+  if (!window.confirm('Desativar esta rotina? Ela some da lista, mas o histórico é mantido.')) return;
+  google.script.run
+    .withSuccessHandler(function(list) { state.rotinas = list; fecharModal('rotinaModal'); renderRotinas(); showToast('Rotina desativada.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
+    .deleteRotina(TOKEN, rotinaEditId);
+}
+
+// ── ENTREGAS ──────────────────────────────────────────
+
+function renderEntregasFiltros() {
+  var anos = {};
+  state.entregas.forEach(function(e) { if (e.ano) anos[e.ano] = true; });
+  var sel = document.getElementById('entAnoFilter');
+  var anoAtual = String(new Date().getFullYear());
+  sel.innerHTML = Object.keys(anos).sort().map(function(a) { return '<option value="' + a + '"' + (a===anoAtual?' selected':'') + '>' + a + '</option>'; }).join('');
+}
+
+function renderEntregas() {
+  var ano = Number(document.getElementById('entAnoFilter').value);
+  var rows = state.entregas.filter(function(e) { return e.ano === ano; });
+
+  var atividades = [];
+  rows.forEach(function(r) { if (atividades.indexOf(r.atividade) === -1) atividades.push(r.atividade); });
+
+  var thead = '<thead><tr><th>Atividade</th>' + MESES.map(function(m) { return '<th class="num">' + m.slice(0,3) + '</th>'; }).join('') + '</tr></thead>';
+
+  var tbody = '<tbody>' + atividades.map(function(at) {
+    var cells = '';
+    for (var mes = 1; mes <= 12; mes++) {
+      var r = rows.filter(function(x) { return x.atividade === at && x.mes === mes; })[0];
+      var val = r ? r.status : '';
+      cells += '<td class="num"><select class="status-select" onchange="onEntregaStatusChange(\'' + esc(at) + '\',' + mes + ',' + ano + ',this.value)">' +
+        '<option value=""' + (val===''?' selected':'') + '>—</option>' +
+        '<option value="NO PRAZO"' + (val==='NO PRAZO'?' selected':'') + '>NO PRAZO</option>' +
+        '<option value="EM ATRASO"' + (val==='EM ATRASO'?' selected':'') + '>EM ATRASO</option>' +
+        '</select></td>';
+    }
+    return '<tr><td>' + esc(at) + '</td>' + cells + '</tr>';
+  }).join('') + '</tbody>';
+
+  document.getElementById('entTable').innerHTML = thead + tbody;
+}
+
+function onEntregaStatusChange(atividade, mes, ano, status) {
+  google.script.run
+    .withSuccessHandler(function(list) { state.entregas = list; showToast('Status atualizado!', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderEntregas(); })
+    .saveEntregaStatus(TOKEN, { atividade: atividade, mes: mes, ano: ano, status: status });
+}
+
+// ── SECRETARIA ────────────────────────────────────────
+
+function renderSecretaria() {
+  var s = state.secretaria;
+
+  document.getElementById('horariosTable').innerHTML =
+    '<thead><tr><th>Nome</th><th>Padrão</th><th>Sexta</th><th>Status</th><th></th></tr></thead><tbody>' +
+    s.horarios.map(function(h) {
+      return '<tr><td>' + esc(h.nome) + '</td><td>' + esc(h.horarioPadrao) + '</td><td>' + esc(h.horarioSexta) + '</td>' +
+        '<td>' + (h.ativo ? '<span class="status-pill no-prazo">ATIVO</span>' : '<span class="status-pill vazio">INATIVO</span>') + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirHorarioModal(\'' + esc(h.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') + '</tbody>';
+
+  document.getElementById('escalaTable').innerHTML =
+    '<thead><tr><th>Data</th><th>Pessoa 1</th><th>Pessoa 2</th><th>Pessoa 3</th><th>Observação</th><th></th></tr></thead><tbody>' +
+    s.escalaSabado.map(function(e) {
+      return '<tr><td>' + fmtDataBR(e.data) + '</td><td>' + esc(e.pessoa1) + '</td><td>' + esc(e.pessoa2) + '</td><td>' + esc(e.pessoa3) + '</td>' +
+        '<td>' + esc(e.observacao) + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirEscalaModal(\'' + e.data + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') + '</tbody>';
+
+  document.getElementById('ajustesTable').innerHTML =
+    '<thead><tr><th>Data</th><th>Descrição</th><th>Status</th><th></th></tr></thead><tbody>' +
+    s.ajustes.slice(0, 60).map(function(a) {
+      return '<tr><td>' + fmtDataBR(a.data) + '</td><td>' + esc(a.atividade) + '</td>' +
+        '<td>' + (a.status === 'Feito' ? '<span class="status-pill no-prazo">Feito</span>' : '<span class="status-pill vazio">—</span>') + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirAjusteModal(\'' + a.id + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') + '</tbody>';
+}
+
+// -- Horário fixo --
+var horarioEditNome = null;
+
+function abrirHorarioModal(nome) {
+  horarioEditNome = nome || null;
+  var h = nome ? state.secretaria.horarios.filter(function(x){ return x.nome===nome; })[0] : null;
+  document.getElementById('hoNome').value = h ? h.nome : '';
+  document.getElementById('hoPadrao').value = h ? h.horarioPadrao : '';
+  document.getElementById('hoSexta').value = h ? h.horarioSexta : '';
+  document.getElementById('hoAtivo').checked = h ? h.ativo : true;
+  document.getElementById('horarioModalStatus').textContent = '';
+  document.getElementById('horarioModal').classList.add('open');
+}
+
+function salvarHorarioModal() {
+  var nome = document.getElementById('hoNome').value.trim();
+  var status = document.getElementById('horarioModalStatus');
+  if (!nome) { status.textContent = 'Informe o nome.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    nome: nome,
+    nomeOriginal: horarioEditNome,
+    horarioPadrao: document.getElementById('hoPadrao').value.trim(),
+    horarioSexta: document.getElementById('hoSexta').value.trim(),
+    ativo: document.getElementById('hoAtivo').checked
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(list) { state.secretaria.horarios = list; fecharModal('horarioModal'); renderSecretaria(); showToast('Horário salvo!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveHorario(TOKEN, payload);
+}
+
+// -- Escala de sábado --
+var escalaEditData = null;
+
+function abrirEscalaModal(data) {
+  escalaEditData = data || null;
+  var e = data ? state.secretaria.escalaSabado.filter(function(x){ return x.data===data; })[0] : null;
+  document.getElementById('esData').value = e ? e.data : '';
+  document.getElementById('esPessoa1').value = e ? e.pessoa1 : '';
+  document.getElementById('esPessoa2').value = e ? e.pessoa2 : '';
+  document.getElementById('esPessoa3').value = e ? e.pessoa3 : '';
+  document.getElementById('esObservacao').value = e ? e.observacao : '';
+  document.getElementById('escalaModalStatus').textContent = '';
+  document.getElementById('escalaModal').classList.add('open');
+}
+
+function salvarEscalaModal() {
+  var data = document.getElementById('esData').value;
+  var status = document.getElementById('escalaModalStatus');
+  if (!data) { status.textContent = 'Informe a data.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    data: data,
+    dataOriginal: escalaEditData,
+    pessoa1: document.getElementById('esPessoa1').value.trim(),
+    pessoa2: document.getElementById('esPessoa2').value.trim(),
+    pessoa3: document.getElementById('esPessoa3').value.trim(),
+    observacao: document.getElementById('esObservacao').value.trim()
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(list) { state.secretaria.escalaSabado = list; fecharModal('escalaModal'); renderSecretaria(); showToast('Escala salva!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveEscalaSabado(TOKEN, payload);
+}
+
+// -- Ajuste de horário --
+var ajusteEditId = null;
+
+function abrirAjusteModal(id) {
+  ajusteEditId = id || null;
+  var a = id ? state.secretaria.ajustes.filter(function(x){ return x.id===id; })[0] : null;
+  document.getElementById('ajusteModalTitle').textContent = a ? 'Editar ajuste' : 'Novo ajuste';
+  document.getElementById('ajAtividade').value = a ? a.atividade : '';
+  document.getElementById('ajData').value = a ? a.data : '';
+  document.getElementById('ajStatus').value = a ? a.status : '';
+  document.getElementById('ajusteModalStatus').textContent = '';
+  document.getElementById('ajDeleteBtn').style.display = a ? '' : 'none';
+  document.getElementById('ajusteModal').classList.add('open');
+}
+
+function salvarAjusteModal() {
+  var atividade = document.getElementById('ajAtividade').value.trim();
+  var data = document.getElementById('ajData').value;
+  var status = document.getElementById('ajusteModalStatus');
+  if (!atividade || !data) { status.textContent = 'Informe a descrição e a data.'; status.className = 'modal-status error'; return; }
+
+  var payload = { id: ajusteEditId, atividade: atividade, data: data, status: document.getElementById('ajStatus').value };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(list) { state.secretaria.ajustes = list; fecharModal('ajusteModal'); renderSecretaria(); showToast('Ajuste salvo!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveAjusteHorario(TOKEN, payload);
+}
+
+function excluirAjuste() {
+  if (!ajusteEditId) return;
+  if (!window.confirm('Excluir este ajuste?')) return;
+  google.script.run
+    .withSuccessHandler(function(list) { state.secretaria.ajustes = list; fecharModal('ajusteModal'); renderSecretaria(); showToast('Ajuste excluído.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
+    .deleteAjusteHorario(TOKEN, ajusteEditId);
+}
+
+// Recarrega o dashboard depois de alterações no calendário/secretaria que o afetam
+function renderDashboardRefresh() {
+  google.script.run.withSuccessHandler(function(d){ state.dashboard = d; renderDashboard(); }).withFailureHandler(function(){}).getDashboard(TOKEN);
+}
+
+// ── UTILS ─────────────────────────────────────────────
+
+function statusPill(status) {
+  if (status === 'NO PRAZO') return '<span class="status-pill no-prazo">NO PRAZO</span>';
+  if (status === 'EM ATRASO') return '<span class="status-pill em-atraso">EM ATRASO</span>';
+  return '<span class="status-pill vazio">—</span>';
+}
+
+function fmtDataBR(iso) {
+  if (!iso) return '';
+  var p = iso.split('-');
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+
+function fecharModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function show(id) {
+  hideAll();
+  var el = document.getElementById(id);
+  if (el) el.style.display = (id === 'screenMain') ? 'flex' : '';
+}
+
+function hideAll() {
+  ['screenLoading','screenError','screenMain'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
+function showError(err) {
+  show('screenError');
+  document.getElementById('errorMsg').textContent = (err && err.message) ? err.message : String(err);
+}
+
+var toastTimer = null;
+function showToast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { el.className = 'toast'; }, 3000);
+}
+</script>
+</body>
+</html>
