@@ -391,6 +391,89 @@ function deleteRotina(token, id) {
   return getRotinas(token);
 }
 
+// Seed único: importa as tarefas individuais da aba "Rotina/Feedback" (por
+// pessoa: Elaine, Bruna, Nayara, Rafaela, Rosana, Caren) para a aba ROTINAS,
+// como frequência "INDIVIDUAL". Rode manualmente uma vez pelo editor do Apps
+// Script (menu Executar → popularRotinasIndividuais). Pode rodar de novo sem
+// medo: tarefas já existentes (mesma tarefa + mesma pessoa) não são duplicadas.
+function popularRotinasIndividuais() {
+  const sheet = getRotinasSheet_();
+  const rows  = sheet.getDataRange().getValues();
+
+  const existentes = new Set();
+  for (let i = 1; i < rows.length; i++) {
+    existentes.add(norm_(rows[i][1]) + '|' + norm_(rows[i][2]));
+  }
+
+  const tarefasPorPessoa = {
+    'Elaine': [
+      'Horário conferido Alice até o Bram',
+      'Appsheet Controle de alunos - verificar cancelamentos',
+      'Envio da posição de estoque (SophiA x New Choice)',
+      'Planilha de certificados (todos os níveis)',
+      'Lista de cancelados do mês para Pri e Ge (todo dia 01)',
+      'Recibo de pagamento Ana Beatriz dos Santos Reis dia 1',
+      'Declaração de pagamento/demonstrativo e frequência Bruno Ferraz Pais Bittencourt dia 02',
+      'Declaração Tais Soares de Freitas Dias dia 11',
+      'Declaração de pagamento Gregory Pontes Oliveira dia 14',
+      'Luise Soares Vieira - Declaração Mensal de Frequência'
+    ],
+    'Bruna': [
+      'Horário Conferido Nathalie até Olivia',
+      'Contato com os alunos em TI (às terças)',
+      'Neide Aparecida Sousa Freitas - NF-e Bol e Polo todo dia 6',
+      'Sharlene Barga de Campos NF-e BOL todo o dia 10',
+      'Declaração BOL - Laercio Ribeiro Souza dia 08',
+      'Declaração de pagamento dia 20 Jessica Fernanda Veiga Lopes',
+      'Lilian Odeli - Enviar NF-e Bol e Polo todo dia 5 de cada mês',
+      'Declaração de pagamento dia 15 Maria Luiza dos Santos Itaborahy',
+      'Natalia Salvador - Enviar NF-e BOL e polo, após o dia 23'
+    ],
+    'Nayara': [
+      'Horário Conferido Hudson até Mary',
+      'Relatório de Cias',
+      'Relatório de Bolsistas',
+      'My BRASAS - verificar alunos sem convite',
+      'Private - cobrança mensal',
+      'Caixa de entrada e-mail Admin',
+      'Conferência mensal appsheet de matrículas'
+    ],
+    'Rafaela': [
+      'Horário Conferido Peter até Taylor',
+      'Planilha de segunda chamada - toda quarta',
+      'Contato com TI - terça e quinta',
+      'Juliana Azevedo Cunha - Declaração dia 01',
+      'Andre Gomes Valle Nery - NF-es todo o dia 1',
+      'Luciane F. de Castro de Abreu - Declaração de Pagamento dia 2',
+      'Pedro Gomes dos Santos NFs todo dia 02',
+      'Rozania Pereira - dia 05 (Polo Macaé)'
+    ],
+    'Rosana': [
+      'Horário Conferido Bunny até Houston',
+      'Daniel Vitor Silva Declaração e NF-e dia 05'
+    ],
+    'Caren': [
+      'Igor Aniceto dos Santos - Enviar NFs por e-mail todo dia 12',
+      'Juliana Matias da Silva - NFS por email (Aluna Split) dia 16',
+      'Leandro de Lucas Mendes - Enviar NFS por email todo dia 18'
+    ]
+  };
+
+  let adicionadas = 0;
+  Object.keys(tarefasPorPessoa).forEach(function(pessoa) {
+    tarefasPorPessoa[pessoa].forEach(function(tarefa) {
+      const chave = norm_(tarefa) + '|' + norm_(pessoa);
+      if (existentes.has(chave)) return; // já existe, evita duplicar
+      sheet.appendRow(['INDIVIDUAL', tarefa, pessoa, 'SIM', Utilities.getUuid()]);
+      existentes.add(chave);
+      adicionadas++;
+    });
+  });
+
+  Logger.log(adicionadas + ' rotinas individuais adicionadas.');
+  return adicionadas;
+}
+
 // =============================================================================
 // ENTREGAS
 // =============================================================================
