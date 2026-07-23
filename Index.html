@@ -90,6 +90,14 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
 .tab-panel {display:none}
 .tab-panel.active {display:block}
 
+.sub-tabs-nav {display:flex;gap:18px;margin-bottom:16px;border-bottom:1.5px solid var(--gray-200)}
+.sub-tab-btn {
+  background:none;border:none;cursor:pointer;padding:8px 2px;margin-bottom:-1.5px;
+  font-family:var(--font);font-size:.85rem;font-weight:700;color:var(--gray-500);
+  border-bottom:2.5px solid transparent;
+}
+.sub-tab-btn.active {color:var(--navy-900);border-bottom-color:var(--navy-900)}
+
 .card {
   background:var(--white);border:1px solid var(--gray-200);
   border-radius:var(--radius);box-shadow:var(--shadow-sm);
@@ -196,6 +204,9 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
 .status-pill.no-prazo  {background:var(--success-100);color:var(--success-600)}
 .status-pill.em-atraso {background:var(--danger-100);color:var(--danger-600)}
 .status-pill.vazio     {background:var(--gray-100);color:var(--gray-400)}
+.status-pill.pendente  {background:var(--warning-100);color:#92400e}
+.status-pill.atencao   {background:var(--danger-100);color:var(--danger-600)}
+.status-pill.nao-aplica{background:var(--gray-100);color:var(--gray-500)}
 
 .filter-row {display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 .select-input, .text-input {
@@ -266,8 +277,8 @@ table.data-table {width:100%;border-collapse:collapse;font-size:.83rem}
 }
 .esc-pessoas {display:flex;flex-direction:column;gap:6px}
 .esc-pessoa-badge {
-  font-size:.78rem;font-weight:600;color:var(--navy-800);
-  background:var(--navy-50);border-radius:6px;padding:5px 9px;
+  font-size:.78rem;font-weight:700;color:#fff;
+  border-radius:6px;padding:5px 9px;
 }
 .esc-obs {font-size:.74rem;color:var(--gray-500);margin-top:8px;font-style:italic}
 .esc-empty {font-size:.78rem;color:var(--gray-400);font-style:italic;padding:6px 0}
@@ -438,7 +449,16 @@ select.status-select {
           <div class="card-title" style="margin-bottom:0">Checklist de Rotinas</div>
           <button class="btn" onclick="abrirRotinaModal()">+ Nova rotina</button>
         </div>
-        <div id="rotinasList" class="rot-board"></div>
+        <div class="sub-tabs-nav">
+          <button class="sub-tab-btn active" data-subtab="gerais" onclick="switchRotSubTab('gerais')">Gerais</button>
+          <button class="sub-tab-btn" data-subtab="individuais" onclick="switchRotSubTab('individuais')">Individuais</button>
+        </div>
+        <div id="rotSubGerais" class="tab-panel active">
+          <div id="rotinasListGerais" class="rot-board"></div>
+        </div>
+        <div id="rotSubIndividuais" class="tab-panel">
+          <div id="rotinasListIndividuais" class="rot-board"></div>
+        </div>
       </div>
     </div>
 
@@ -487,6 +507,13 @@ select.status-select {
         <div class="section-head">
           <div class="card-title" style="margin-bottom:0">Ajustes de horário</div>
           <button class="btn btn-sm" onclick="abrirAjusteModal()">+ Novo ajuste</button>
+        </div>
+        <div class="filter-row">
+          <input type="date" id="ajDataFilter" class="text-input" onchange="renderAjustes()">
+          <select id="ajTagFilter" class="select-input" onchange="renderAjustes()">
+            <option value="">Todas as tags</option>
+          </select>
+          <button class="btn-ghost btn-sm" onclick="limparFiltrosAjustes()">Limpar filtros</button>
         </div>
         <table class="data-table" id="ajustesTable"></table>
       </div>
@@ -632,9 +659,14 @@ select.status-select {
         <select id="ajStatus" class="modal-select">
           <option value="">—</option>
           <option value="Feito">Feito</option>
+          <option value="Pendente">Pendente</option>
+          <option value="Atenção">Atenção</option>
+          <option value="Não se aplica">Não se aplica</option>
         </select>
       </div>
     </div>
+    <label class="modal-label">Tags (pessoas)</label>
+    <input id="ajTags" class="modal-input" type="text" placeholder="Ex: Nathy / Aline">
     <div id="ajusteModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="ajDeleteBtn" style="display:none;color:#fff" onclick="excluirAjuste()">Excluir</button>
@@ -986,34 +1018,66 @@ function excluirEvento() {
 
 // ── ROTINAS ───────────────────────────────────────────
 
+function switchRotSubTab(sub) {
+  document.querySelectorAll('.sub-tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-subtab') === sub); });
+  document.getElementById('rotSubGerais').classList.toggle('active', sub === 'gerais');
+  document.getElementById('rotSubIndividuais').classList.toggle('active', sub === 'individuais');
+}
+
+function rotItemHtml_(r) {
+  var tagsHtml = splitResponsaveis_(r.responsavel).map(function(nome) {
+    return '<span class="rot-tag" style="background:' + corPessoa_(nome) + '">' + esc(nome) + '</span>';
+  }).join('');
+  return '<div class="rot-item' + (r.concluido ? ' done' : '') + '">' +
+    '<div class="rot-item-top">' +
+    '<input type="checkbox" class="rot-check" ' + (r.concluido ? 'checked' : '') +
+    ' onchange="onToggleRotina(\'' + r.id + '\',\'' + r.periodo + '\',this.checked)">' +
+    '<button class="rot-edit-btn" onclick="abrirRotinaModal(\'' + r.id + '\')" title="Editar">&#9998;</button>' +
+    '</div>' +
+    '<div class="rot-tarefa">' + esc(r.tarefa) + '</div>' +
+    '<div class="rot-tags">' + tagsHtml + '</div>' +
+    (r.concluido ? '<div class="rot-meta">concluído por ' + esc(r.concluidoPor) + ' em ' + esc(r.concluidoEm) + '</div>' : '') +
+    '</div>';
+}
+
 function renderRotinas() {
-  var el = document.getElementById('rotinasList');
+  var gerais = state.rotinas.filter(function(r) { return r.frequencia !== 'INDIVIDUAL'; });
+  var individuais = state.rotinas.filter(function(r) { return r.frequencia === 'INDIVIDUAL'; });
+  renderRotinasGerais_(gerais);
+  renderRotinasIndividuais_(individuais);
+}
+
+function renderRotinasGerais_(lista) {
+  var el = document.getElementById('rotinasListGerais');
   var porFreq = {};
-  state.rotinas.forEach(function(r) { (porFreq[r.frequencia] = porFreq[r.frequencia] || []).push(r); });
+  lista.forEach(function(r) { (porFreq[r.frequencia] = porFreq[r.frequencia] || []).push(r); });
 
   var ordem = FREQ_ORDEM.filter(function(f) { return porFreq[f]; })
     .concat(Object.keys(porFreq).filter(function(f) { return FREQ_ORDEM.indexOf(f) === -1; }));
 
-  if (!ordem.length) { el.innerHTML = '<div class="empty-hint">Nenhuma rotina cadastrada.</div>'; return; }
+  if (!ordem.length) { el.innerHTML = '<div class="empty-hint">Nenhuma rotina geral cadastrada.</div>'; return; }
 
   el.innerHTML = ordem.map(function(freq) {
-    var itens = porFreq[freq];
-    var itensHtml = itens.map(function(r) {
-      var tagsHtml = splitResponsaveis_(r.responsavel).map(function(nome) {
-        return '<span class="rot-tag" style="background:' + corPessoa_(nome) + '">' + esc(nome) + '</span>';
-      }).join('');
-      return '<div class="rot-item' + (r.concluido ? ' done' : '') + '">' +
-        '<div class="rot-item-top">' +
-        '<input type="checkbox" class="rot-check" ' + (r.concluido ? 'checked' : '') +
-        ' onchange="onToggleRotina(\'' + r.id + '\',\'' + r.periodo + '\',this.checked)">' +
-        '<button class="rot-edit-btn" onclick="abrirRotinaModal(\'' + r.id + '\')" title="Editar">&#9998;</button>' +
-        '</div>' +
-        '<div class="rot-tarefa">' + esc(r.tarefa) + '</div>' +
-        '<div class="rot-tags">' + tagsHtml + '</div>' +
-        (r.concluido ? '<div class="rot-meta">concluído por ' + esc(r.concluidoPor) + ' em ' + esc(r.concluidoEm) + '</div>' : '') +
-        '</div>';
-    }).join('');
+    var itensHtml = porFreq[freq].map(rotItemHtml_).join('');
     return '<div class="rot-section"><div class="rot-section-title">' + esc(freq) + '</div>' +
+      '<div class="rot-squares">' + itensHtml + '</div></div>';
+  }).join('');
+}
+
+function renderRotinasIndividuais_(lista) {
+  var el = document.getElementById('rotinasListIndividuais');
+  if (!lista.length) { el.innerHTML = '<div class="empty-hint">Nenhuma rotina individual cadastrada.</div>'; return; }
+
+  var porPessoa = {};
+  lista.forEach(function(r) {
+    var nome = splitResponsaveis_(r.responsavel)[0] || 'Sem responsável';
+    (porPessoa[nome] = porPessoa[nome] || []).push(r);
+  });
+
+  var pessoas = Object.keys(porPessoa).sort();
+  el.innerHTML = pessoas.map(function(nome) {
+    var itensHtml = porPessoa[nome].map(rotItemHtml_).join('');
+    return '<div class="rot-section"><div class="rot-section-title" style="background:' + corPessoa_(nome) + '">' + esc(nome) + '</div>' +
       '<div class="rot-squares">' + itensHtml + '</div></div>';
   }).join('');
 }
@@ -1023,16 +1087,26 @@ function splitResponsaveis_(str) {
   return String(str || '').split(/\/|,/).map(function(s) { return s.trim(); }).filter(Boolean);
 }
 
-var TAG_PALETTE_ = ['#2563eb','#7c3aed','#db2777','#ea580c','#059669','#0891b2','#ca8a04','#dc2626','#4f46e5','#65a30d'];
+var TAG_PALETTE_ = [
+  '#2563eb','#dc2626','#059669','#7c3aed','#ea580c','#db2777','#0891b2','#ca8a04',
+  '#4f46e5','#65a30d','#0d9488','#c026d3','#b45309','#475569','#9333ea','#be123c'
+];
 
-// Cor estável por pessoa (mesma pessoa = mesma cor sempre, calculado por hash do nome).
+// Cor estável por pessoa: a primeira pessoa "vista" pega a 1ª cor da paleta, a
+// segunda pessoa nova pega a 2ª, e assim por diante — evitando que duas pessoas
+// diferentes caiam na mesma cor por coincidência (o que acontecia com hash).
 // "Todas" fica cinza neutro, por não ser uma pessoa específica.
+var PESSOA_COR_MAP_ = {};
+var PESSOA_COR_NEXT_ = 0;
+
 function corPessoa_(nome) {
   var key = nome.trim().toLowerCase();
   if (key === 'todas' || key === '') return '#64748b';
-  var h = 0;
-  for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return TAG_PALETTE_[h % TAG_PALETTE_.length];
+  if (!PESSOA_COR_MAP_[key]) {
+    PESSOA_COR_MAP_[key] = TAG_PALETTE_[PESSOA_COR_NEXT_ % TAG_PALETTE_.length];
+    PESSOA_COR_NEXT_++;
+  }
+  return PESSOA_COR_MAP_[key];
 }
 
 function onToggleRotina(id, periodo, concluido) {
@@ -1164,13 +1238,61 @@ function renderSecretaria() {
 
   renderEscalaSabado();
 
+  renderAjustesFiltros_();
+  renderAjustes();
+}
+
+function ajusteStatusPill_(status) {
+  var map = { 'Feito': 'no-prazo', 'Pendente': 'pendente', 'Atenção': 'atencao', 'Não se aplica': 'nao-aplica' };
+  var cls = map[status] || 'vazio';
+  return '<span class="status-pill ' + cls + '">' + esc(status || '—') + '</span>';
+}
+
+function renderAjustesFiltros_() {
+  var tagsSet = {};
+  state.secretaria.ajustes.forEach(function(a) {
+    splitResponsaveis_(a.tags).forEach(function(t) { tagsSet[t] = true; });
+  });
+  var sel = document.getElementById('ajTagFilter');
+  var atual = sel.value;
+  sel.innerHTML = '<option value="">Todas as tags</option>' +
+    Object.keys(tagsSet).sort().map(function(t) {
+      return '<option value="' + esc(t) + '"' + (t === atual ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('');
+}
+
+function limparFiltrosAjustes() {
+  document.getElementById('ajDataFilter').value = '';
+  document.getElementById('ajTagFilter').value = '';
+  renderAjustes();
+}
+
+function renderAjustes() {
+  var dataFiltro = document.getElementById('ajDataFilter').value;
+  var tagFiltro = document.getElementById('ajTagFilter').value;
+  var temFiltro = !!(dataFiltro || tagFiltro);
+
+  var lista = state.secretaria.ajustes.filter(function(a) {
+    if (dataFiltro && a.data !== dataFiltro) return false;
+    if (tagFiltro && splitResponsaveis_(a.tags).indexOf(tagFiltro) === -1) return false;
+    return true;
+  });
+  if (!temFiltro) lista = lista.slice(0, 60);
+
+  var linhas = lista.map(function(a) {
+    var tagsHtml = splitResponsaveis_(a.tags).map(function(t) {
+      return '<span class="rot-tag" style="background:' + corPessoa_(t) + '">' + esc(t) + '</span>';
+    }).join('');
+    return '<tr><td>' + fmtDataBR(a.data) + '</td><td>' + esc(a.atividade) + '</td>' +
+      '<td>' + ajusteStatusPill_(a.status) + '</td>' +
+      '<td><div class="rot-tags">' + (tagsHtml || '—') + '</div></td>' +
+      '<td><button class="rot-edit-btn" onclick="abrirAjusteModal(\'' + a.id + '\')" title="Editar">&#9998;</button></td></tr>';
+  }).join('');
+
   document.getElementById('ajustesTable').innerHTML =
-    '<thead><tr><th>Data</th><th>Descrição</th><th>Status</th><th></th></tr></thead><tbody>' +
-    s.ajustes.slice(0, 60).map(function(a) {
-      return '<tr><td>' + fmtDataBR(a.data) + '</td><td>' + esc(a.atividade) + '</td>' +
-        '<td>' + (a.status === 'Feito' ? '<span class="status-pill no-prazo">Feito</span>' : '<span class="status-pill vazio">—</span>') + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirAjusteModal(\'' + a.id + '\')" title="Editar">&#9998;</button></td></tr>';
-    }).join('') + '</tbody>';
+    '<thead><tr><th>Data</th><th>Descrição</th><th>Status</th><th>Tags</th><th></th></tr></thead><tbody>' +
+    (linhas || '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum ajuste encontrado.</td></tr>') +
+    '</tbody>';
 }
 
 function saturdaysOfMonth(year, month) {
@@ -1207,7 +1329,7 @@ function renderEscalaSabado() {
       '<div class="esc-card-head"><span class="esc-day">' + pad2(d.getDate()) + '</span>' +
       '<button class="rot-edit-btn" onclick="abrirEscalaModal(\'' + iso + '\')" title="Editar">&#9998;</button></div>' +
       (pessoas.length
-        ? '<div class="esc-pessoas">' + pessoas.map(function(p) { return '<span class="esc-pessoa-badge">' + esc(p) + '</span>'; }).join('') + '</div>' +
+        ? '<div class="esc-pessoas">' + pessoas.map(function(p) { return '<span class="esc-pessoa-badge" style="background:' + corPessoa_(p) + '">' + esc(p) + '</span>'; }).join('') + '</div>' +
           (e.observacao ? '<div class="esc-obs">' + esc(e.observacao) + '</div>' : '')
         : '<div class="esc-empty">Sem escala definida</div>') +
       '</div>';
@@ -1296,6 +1418,7 @@ function abrirAjusteModal(id) {
   document.getElementById('ajAtividade').value = a ? a.atividade : '';
   document.getElementById('ajData').value = a ? a.data : '';
   document.getElementById('ajStatus').value = a ? a.status : '';
+  document.getElementById('ajTags').value = a ? a.tags : '';
   document.getElementById('ajusteModalStatus').textContent = '';
   document.getElementById('ajDeleteBtn').style.display = a ? '' : 'none';
   document.getElementById('ajusteModal').classList.add('open');
@@ -1307,7 +1430,11 @@ function salvarAjusteModal() {
   var status = document.getElementById('ajusteModalStatus');
   if (!atividade || !data) { status.textContent = 'Informe a descrição e a data.'; status.className = 'modal-status error'; return; }
 
-  var payload = { id: ajusteEditId, atividade: atividade, data: data, status: document.getElementById('ajStatus').value };
+  var payload = {
+    id: ajusteEditId, atividade: atividade, data: data,
+    status: document.getElementById('ajStatus').value,
+    tags: document.getElementById('ajTags').value.trim()
+  };
 
   status.textContent = 'Salvando...'; status.className = 'modal-status';
   google.script.run

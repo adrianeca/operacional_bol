@@ -626,7 +626,7 @@ function saveEscalaSabado(token, e) {
 function getAjustesSheet_() {
   const sheet = getOpSS_().getSheetByName(ABA_AJUSTES_HORARIO);
   if (!sheet) throw new Error('Aba "' + ABA_AJUSTES_HORARIO + '" não encontrada.');
-  const header = sheet.getRange(1, 1, 1, 8).getValues()[0];
+  const header = sheet.getRange(1, 1, 1, 9).getValues()[0];
   if (!header[7]) {
     sheet.getRange(1, 8).setValue('ID');
     const last = sheet.getLastRow();
@@ -635,6 +635,7 @@ function getAjustesSheet_() {
       sheet.getRange(2, 8, ids.length, 1).setValues(ids.map(function(r) { return [r[0] || Utilities.getUuid()]; }));
     }
   }
+  if (!header[8]) sheet.getRange(1, 9).setValue('Tags');
   return sheet;
 }
 
@@ -646,7 +647,8 @@ function ajusteFromRow_(r) {
     status: String(r[2] || '').trim(),
     mes: Number(r[3]), ano: Number(r[4]),
     registradoPor: String(r[5] || '').trim(),
-    registradoEm: fmtDataHora_(r[6])
+    registradoEm: fmtDataHora_(r[6]),
+    tags: String(r[8] || '').trim()
   };
 }
 
@@ -671,19 +673,21 @@ function saveAjusteHorario(token, a) {
   if (!atividade || !dataStr) throw new Error('Informe a atividade e a data.');
   const data = new Date(dataStr + 'T00:00:00');
   const status = String(a.status || '').trim();
+  const tags = String(a.tags || '').trim();
 
   if (a.id) {
     const rows = sheet.getDataRange().getValues();
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][7]) === String(a.id)) {
         sheet.getRange(i + 1, 1, 1, 5).setValues([[atividade, data, status, data.getMonth() + 1, data.getFullYear()]]);
+        sheet.getRange(i + 1, 9).setValue(tags);
         return getAjustesHorario(token);
       }
     }
     throw new Error('Ajuste não encontrado.');
   }
 
-  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid()]);
+  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(), tags]);
   return getAjustesHorario(token);
 }
 
