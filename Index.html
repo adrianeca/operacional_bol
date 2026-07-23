@@ -98,6 +98,9 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
 }
 .sub-tab-btn.active {color:var(--navy-900);border-bottom-color:var(--navy-900)}
 
+.sub-tab-panel {display:none}
+.sub-tab-panel.active {display:block}
+
 .card {
   background:var(--white);border:1px solid var(--gray-200);
   border-radius:var(--radius);box-shadow:var(--shadow-sm);
@@ -314,6 +317,35 @@ select.status-select {
 }
 .modal-textarea {resize:vertical;min-height:70px}
 .modal-input:focus, .modal-select:focus, .modal-textarea:focus {border-color:var(--navy-500);box-shadow:0 0 0 3px rgba(42,77,118,.12)}
+
+.tag-picker {
+  position:relative;border:1.5px solid var(--gray-200);border-radius:8px;
+  padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--white);
+}
+.tag-picker:focus-within {border-color:var(--navy-500);box-shadow:0 0 0 3px rgba(42,77,118,.12)}
+.tag-picker-chips {display:flex;flex-wrap:wrap;gap:6px}
+.tag-chip {
+  display:flex;align-items:center;gap:5px;color:#fff;font-size:.76rem;font-weight:700;
+  padding:4px 6px 4px 10px;border-radius:999px;white-space:nowrap;
+}
+.tag-chip-remove {
+  cursor:pointer;background:rgba(255,255,255,.25);border:none;color:#fff;border-radius:50%;
+  width:16px;height:16px;font-size:.7rem;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;
+}
+.tag-chip-remove:hover {background:rgba(255,255,255,.4)}
+.tag-picker-input {flex:1;min-width:120px;border:none;outline:none;font-family:var(--font);font-size:.85rem;padding:4px 2px;background:transparent}
+.tag-picker-dropdown {
+  position:absolute;top:100%;left:0;right:0;margin-top:4px;z-index:10;
+  background:var(--white);border:1px solid var(--gray-200);border-radius:8px;box-shadow:var(--shadow-md);
+  max-height:180px;overflow-y:auto;display:none;
+}
+.tag-picker-dropdown.open {display:block}
+.tag-picker-option {padding:8px 12px;font-size:.83rem;cursor:pointer;display:flex;align-items:center;gap:8px}
+.tag-picker-option:hover {background:var(--gray-50)}
+.tag-picker-option-dot {width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.tag-picker-option-create {color:var(--navy-600);font-weight:700}
+.tag-picker-empty {padding:8px 12px;font-size:.8rem;color:var(--gray-400);font-style:italic}
+
 .modal-row {display:flex;gap:12px}
 .modal-row > div {flex:1}
 .modal-actions {display:flex;justify-content:flex-end;gap:10px;margin-top:22px}
@@ -453,10 +485,10 @@ select.status-select {
           <button class="sub-tab-btn active" data-subtab="gerais" onclick="switchRotSubTab('gerais')">Gerais</button>
           <button class="sub-tab-btn" data-subtab="individuais" onclick="switchRotSubTab('individuais')">Individuais</button>
         </div>
-        <div id="rotSubGerais" class="tab-panel active">
+        <div id="rotSubGerais" class="sub-tab-panel active">
           <div id="rotinasListGerais" class="rot-board"></div>
         </div>
-        <div id="rotSubIndividuais" class="tab-panel">
+        <div id="rotSubIndividuais" class="sub-tab-panel">
           <div id="rotinasListIndividuais" class="rot-board"></div>
         </div>
       </div>
@@ -666,7 +698,13 @@ select.status-select {
       </div>
     </div>
     <label class="modal-label">Tags (pessoas)</label>
-    <input id="ajTags" class="modal-input" type="text" placeholder="Ex: Nathy / Aline">
+    <div class="tag-picker" id="ajTagsPicker">
+      <div class="tag-picker-chips" id="ajTagsChips"></div>
+      <input type="text" id="ajTagsInput" class="tag-picker-input" placeholder="Digite um nome ou selecione..."
+        oninput="renderAjTagsDropdown_()" onfocus="renderAjTagsDropdown_()"
+        onblur="hideAjTagsDropdownDelayed_()" onkeydown="onAjTagsKeydown_(event)">
+      <div class="tag-picker-dropdown" id="ajTagsDropdown"></div>
+    </div>
     <div id="ajusteModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="ajDeleteBtn" style="display:none;color:#fff" onclick="excluirAjuste()">Excluir</button>
@@ -1410,6 +1448,87 @@ function salvarEscalaModal() {
 
 // -- Ajuste de horário --
 var ajusteEditId = null;
+var ajTagsSelected_ = [];
+
+// Reúne todos os nomes já usados em qualquer lugar do app (tags de ajustes,
+// responsáveis de rotinas, pessoas da escala de sábado) pra sugerir no seletor.
+function getTodasTagsConhecidas_() {
+  var set = {};
+  (state.secretaria.ajustes || []).forEach(function(a) { splitResponsaveis_(a.tags).forEach(function(t) { set[t] = true; }); });
+  (state.rotinas || []).forEach(function(r) {
+    splitResponsaveis_(r.responsavel).forEach(function(t) { if (t.toLowerCase() !== 'todas') set[t] = true; });
+  });
+  (state.secretaria.escalaSabado || []).forEach(function(e) {
+    [e.pessoa1, e.pessoa2, e.pessoa3].forEach(function(p) { if (p) set[p] = true; });
+  });
+  return Object.keys(set).sort();
+}
+
+function renderAjTagsChips_() {
+  document.getElementById('ajTagsChips').innerHTML = ajTagsSelected_.map(function(t, i) {
+    return '<span class="tag-chip" style="background:' + corPessoa_(t) + '">' + esc(t) +
+      '<button type="button" class="tag-chip-remove" data-index="' + i + '" onmousedown="event.preventDefault();removeAjTagFromEl_(this)">&times;</button></span>';
+  }).join('');
+}
+
+function addAjTag_(nome) {
+  nome = String(nome || '').trim();
+  if (!nome) return;
+  var jaTem = ajTagsSelected_.some(function(t) { return t.toLowerCase() === nome.toLowerCase(); });
+  if (!jaTem) ajTagsSelected_.push(nome);
+  document.getElementById('ajTagsInput').value = '';
+  renderAjTagsChips_();
+  renderAjTagsDropdown_();
+  document.getElementById('ajTagsInput').focus();
+}
+
+function addAjTagFromEl_(el) { addAjTag_(el.getAttribute('data-nome')); }
+
+function removeAjTag_(index) {
+  ajTagsSelected_.splice(index, 1);
+  renderAjTagsChips_();
+}
+
+function removeAjTagFromEl_(el) { removeAjTag_(Number(el.getAttribute('data-index'))); }
+
+function renderAjTagsDropdown_() {
+  var dd = document.getElementById('ajTagsDropdown');
+  var texto = document.getElementById('ajTagsInput').value.trim();
+  var textoLower = texto.toLowerCase();
+  var conhecidas = getTodasTagsConhecidas_();
+
+  var opcoes = conhecidas.filter(function(t) {
+    if (ajTagsSelected_.some(function(s) { return s.toLowerCase() === t.toLowerCase(); })) return false;
+    return !textoLower || t.toLowerCase().indexOf(textoLower) !== -1;
+  });
+
+  var html = opcoes.map(function(t) {
+    return '<div class="tag-picker-option" data-nome="' + esc(t) + '" onmousedown="event.preventDefault();addAjTagFromEl_(this)">' +
+      '<span class="tag-picker-option-dot" style="background:' + corPessoa_(t) + '"></span>' + esc(t) + '</div>';
+  }).join('');
+
+  var existeExato = conhecidas.some(function(t) { return t.toLowerCase() === textoLower; });
+  if (texto && !existeExato) {
+    html += '<div class="tag-picker-option tag-picker-option-create" data-nome="' + esc(texto) + '" onmousedown="event.preventDefault();addAjTagFromEl_(this)">+ Criar tag "' + esc(texto) + '"</div>';
+  }
+  if (!html) html = '<div class="tag-picker-empty">Nenhuma tag encontrada.</div>';
+
+  dd.innerHTML = html;
+  dd.classList.add('open');
+}
+
+function hideAjTagsDropdownDelayed_() {
+  setTimeout(function() { document.getElementById('ajTagsDropdown').classList.remove('open'); }, 150);
+}
+
+function onAjTagsKeydown_(event) {
+  if (event.key === 'Enter' || event.key === ',') {
+    event.preventDefault();
+    addAjTag_(document.getElementById('ajTagsInput').value);
+  } else if (event.key === 'Backspace' && !document.getElementById('ajTagsInput').value && ajTagsSelected_.length) {
+    removeAjTag_(ajTagsSelected_.length - 1);
+  }
+}
 
 function abrirAjusteModal(id) {
   ajusteEditId = id || null;
@@ -1418,7 +1537,10 @@ function abrirAjusteModal(id) {
   document.getElementById('ajAtividade').value = a ? a.atividade : '';
   document.getElementById('ajData').value = a ? a.data : '';
   document.getElementById('ajStatus').value = a ? a.status : '';
-  document.getElementById('ajTags').value = a ? a.tags : '';
+  ajTagsSelected_ = a ? splitResponsaveis_(a.tags) : [];
+  document.getElementById('ajTagsInput').value = '';
+  document.getElementById('ajTagsDropdown').classList.remove('open');
+  renderAjTagsChips_();
   document.getElementById('ajusteModalStatus').textContent = '';
   document.getElementById('ajDeleteBtn').style.display = a ? '' : 'none';
   document.getElementById('ajusteModal').classList.add('open');
@@ -1433,7 +1555,7 @@ function salvarAjusteModal() {
   var payload = {
     id: ajusteEditId, atividade: atividade, data: data,
     status: document.getElementById('ajStatus').value,
-    tags: document.getElementById('ajTags').value.trim()
+    tags: ajTagsSelected_.join(' / ')
   };
 
   status.textContent = 'Salvando...'; status.className = 'modal-status';
