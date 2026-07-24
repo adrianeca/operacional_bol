@@ -16,6 +16,8 @@ Webapp em Google Apps Script para gestão operacional da unidade BOL.
 | `HORARIOS` | Horários fixos da secretaria por pessoa |
 | `ESCALA_SABADO` | Escala de sábados (rodízio mensal) |
 | `AJUSTES_HORARIO` | Trocas, coberturas e ajustes pontuais de horário |
+| `FERIAS` | Períodos de férias já tirados por pessoa (criada automaticamente pelo `Code.gs`) |
+| `FUNCIONARIOS` | Nome + data de admissão/demissão de cada pessoa (criada automaticamente pelo `Code.gs`) |
 
 ## Arquivos
 
@@ -30,7 +32,11 @@ Webapp em Google Apps Script para gestão operacional da unidade BOL.
 2. **Calendário** — Criação/edição de eventos, filtro por ano/mês
 3. **Rotinas** — Checklist por frequência (Diário, Semanal, Mensal...), com histórico em `ROTINAS_LOG`
 4. **Entregas** — Tabela anual editável com status por mês
-5. **Secretaria** — Horários fixos + Escala de sábado + Ajustes de horário
+5. **Funcionários** — três sub-abas:
+   - *Férias*: períodos tirados por pessoa e saldo do ciclo atual (30 dias por ciclo de 12 meses a partir da admissão); períodos lançados aqui aparecem automaticamente no Calendário
+   - *Admissão*: funcionários ativos e suas datas de admissão
+   - *Demissão*: funcionários desligados e suas datas de admissão/demissão
+6. **Secretaria** — Horários fixos + Escala de sábado + Ajustes de horário
 
 ## Auth
 Autenticação via Hub BRASAS BI (token de sessão), mesmo padrão do app de Horas de Professores.

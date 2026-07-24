@@ -412,6 +412,7 @@ select.status-select {
       <button class="tab-btn" data-tab="calendario" onclick="switchTab('calendario')">Calendário</button>
       <button class="tab-btn" data-tab="rotinas" onclick="switchTab('rotinas')">Rotinas</button>
       <button class="tab-btn" data-tab="entregas" onclick="switchTab('entregas')">Entregas</button>
+      <button class="tab-btn" data-tab="funcionarios" onclick="switchTab('funcionarios')">Funcionários</button>
       <button class="tab-btn" data-tab="secretaria" onclick="switchTab('secretaria')">Secretaria</button>
     </div>
 
@@ -504,6 +505,47 @@ select.status-select {
         </div>
         <div class="entregas-wrap">
           <table class="data-table" id="entTable"></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ FUNCIONÁRIOS ══════════════ -->
+    <div id="tabFuncionarios" class="tab-panel">
+      <div class="sub-tabs-nav">
+        <button class="sub-tab-btn active" data-fsubtab="ferias" onclick="switchFuncSubTab('ferias')">Férias</button>
+        <button class="sub-tab-btn" data-fsubtab="admissao" onclick="switchFuncSubTab('admissao')">Admissão</button>
+        <button class="sub-tab-btn" data-fsubtab="demissao" onclick="switchFuncSubTab('demissao')">Demissão</button>
+      </div>
+
+      <div id="funcSubFerias" class="sub-tab-panel active">
+        <div class="card">
+          <div class="card-title">Saldo de férias</div>
+          <div class="card-sub">Ciclo de 12 meses contado a partir da data de admissão · 30 dias liberados por ciclo concluído</div>
+          <table class="data-table" id="feResumoTable"></table>
+        </div>
+        <div class="card">
+          <div class="section-head">
+            <div class="card-title" style="margin-bottom:0">Períodos de férias</div>
+            <button class="btn" onclick="abrirFeriaModal()">+ Novo período</button>
+          </div>
+          <table class="data-table" id="feListaTable"></table>
+        </div>
+      </div>
+
+      <div id="funcSubAdmissao" class="sub-tab-panel">
+        <div class="card">
+          <div class="section-head">
+            <div class="card-title" style="margin-bottom:0">Funcionários ativos</div>
+            <button class="btn" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
+          </div>
+          <table class="data-table" id="admissaoTable"></table>
+        </div>
+      </div>
+
+      <div id="funcSubDemissao" class="sub-tab-panel">
+        <div class="card">
+          <div class="card-title">Funcionários desligados</div>
+          <table class="data-table" id="demissaoTable"></table>
         </div>
       </div>
     </div>
@@ -715,6 +757,58 @@ select.status-select {
   </div>
 </div>
 
+<!-- ── Modal: Período de férias ── -->
+<div id="feriaModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="feriaModalTitle">Novo período de férias</div>
+    <label class="modal-label">Pessoa</label>
+    <input id="fePessoa" class="modal-input" type="text" list="fePessoaList">
+    <datalist id="fePessoaList"></datalist>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Início</label>
+        <input id="feDataInicio" class="modal-input" type="date">
+      </div>
+      <div>
+        <label class="modal-label">Fim</label>
+        <input id="feDataFim" class="modal-input" type="date">
+      </div>
+    </div>
+    <label class="modal-label">Observação (opcional)</label>
+    <textarea id="feObservacao" class="modal-textarea"></textarea>
+    <div id="feriaModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="feDeleteBtn" style="display:none;color:#fff" onclick="excluirFeria()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('feriaModal')">Cancelar</button>
+      <button class="btn" onclick="salvarFeria()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Funcionário (admissão / demissão) ── -->
+<div id="funcionarioModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="funcionarioModalTitle">Nova pessoa</div>
+    <label class="modal-label">Nome</label>
+    <input id="fnNome" class="modal-input" type="text">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Data de admissão</label>
+        <input id="fnDataAdmissao" class="modal-input" type="date">
+      </div>
+      <div>
+        <label class="modal-label">Data de demissão (opcional)</label>
+        <input id="fnDataDemissao" class="modal-input" type="date">
+      </div>
+    </div>
+    <div id="funcionarioModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="fecharModal('funcionarioModal')">Cancelar</button>
+      <button class="btn" onclick="salvarFuncionario()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var TOKEN   = '<?= token ?>';
 var HUB_URL = 'https://script.google.com/a/macros/brasas.com/s/AKfycbyF7BArYMYFtcQY7_4RTGGPw89yNohAjR7eGptItP-EsnWhNfiZR2ISRaHdAkwlLSlr/exec';
@@ -728,7 +822,7 @@ var CATEGORIA_COR = {
   OPERACIONAL:'#2a4d76'
 };
 
-var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, calView:'month', calRefDate:new Date(), escRefDate:new Date() };
+var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, calView:'month', calRefDate:new Date(), escRefDate:new Date() };
 
 // ── INIT ──────────────────────────────────────────────
 
@@ -754,7 +848,10 @@ function loadEntregas() {
   google.script.run.withSuccessHandler(function(d){ state.entregas = d; loadSecretaria(); }).withFailureHandler(showError).getEntregas(TOKEN);
 }
 function loadSecretaria() {
-  google.script.run.withSuccessHandler(function(d){ state.secretaria = d; onAllLoaded(); }).withFailureHandler(showError).getSecretaria(TOKEN);
+  google.script.run.withSuccessHandler(function(d){ state.secretaria = d; loadFerias(); }).withFailureHandler(showError).getSecretaria(TOKEN);
+}
+function loadFerias() {
+  google.script.run.withSuccessHandler(function(d){ state.ferias = d; onAllLoaded(); }).withFailureHandler(showError).getFeriasPagina(TOKEN);
 }
 
 function onAllLoaded() {
@@ -764,6 +861,7 @@ function onAllLoaded() {
   renderEntregasFiltros();
   renderEntregas();
   renderSecretaria();
+  renderFuncionariosPagina();
   hideAll();
   document.getElementById('screenMain').style.display = 'flex';
 }
@@ -773,8 +871,15 @@ function onAllLoaded() {
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
   document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', secretaria:'tabSecretaria' };
+  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria' };
   document.getElementById(map[tab]).classList.add('active');
+}
+
+function switchFuncSubTab(sub) {
+  document.querySelectorAll('#tabFuncionarios .sub-tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-fsubtab') === sub); });
+  document.getElementById('funcSubFerias').classList.toggle('active', sub === 'ferias');
+  document.getElementById('funcSubAdmissao').classList.toggle('active', sub === 'admissao');
+  document.getElementById('funcSubDemissao').classList.toggle('active', sub === 'demissao');
 }
 
 // ── DASHBOARD ─────────────────────────────────────────
@@ -887,7 +992,14 @@ function eventsForDate(iso) {
 
 function eventBarHtml(e) {
   return '<div class="cal-event-bar" style="background:' + (CATEGORIA_COR[e.categoria] || '#64748b') + '" ' +
-    'onclick="abrirEventoModal(\'' + e.id + '\')" title="' + esc(e.titulo) + '">' + esc(e.titulo) + '</div>';
+    'onclick="onCalEventClick(\'' + e.id + '\')" title="' + esc(e.titulo) + '">' + esc(e.titulo) + '</div>';
+}
+
+// Eventos com id "ferias-*" são derivados da aba FERIAS (somente leitura no
+// Calendário) — clicar leva para a aba Férias, onde são de fato editáveis.
+function onCalEventClick(id) {
+  if (String(id).indexOf('ferias-') === 0) { switchTab('funcionarios'); switchFuncSubTab('ferias'); return; }
+  abrirEventoModal(id);
 }
 
 function calSetView(view) {
@@ -992,7 +1104,7 @@ function renderCalendarioDia() {
   if (!evs.length) { el.innerHTML = '<div class="empty-hint">Nenhum evento neste dia.</div>'; return; }
 
   el.innerHTML = evs.map(function(e) {
-    return '<div class="who-row" style="cursor:pointer" onclick="abrirEventoModal(\'' + e.id + '\')">' +
+    return '<div class="who-row" style="cursor:pointer" onclick="onCalEventClick(\'' + e.id + '\')">' +
       '<div><div class="who-name">' + esc(e.titulo) + '</div>' +
       (e.observacao ? '<div class="who-horario">' + esc(e.observacao) + '</div>' : '') + '</div>' +
       '<span class="pill" style="background:' + (CATEGORIA_COR[e.categoria] || '#64748b') + '">' + esc(e.categoria) + '</span></div>';
@@ -1260,6 +1372,182 @@ function onEntregaStatusChange(atividade, mes, ano, selectEl) {
     .withSuccessHandler(function(list) { state.entregas = list; showToast('Status atualizado!', 'success'); })
     .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderEntregas(); })
     .saveEntregaStatus(TOKEN, { atividade: atividade, mes: mes, ano: ano, status: status });
+}
+
+// ── FUNCIONÁRIOS (Férias / Admissão / Demissão) ────────
+
+function renderFuncionariosPagina() {
+  renderFeriasSub_();
+  renderAdmissaoSub_();
+  renderDemissaoSub_();
+}
+
+function renderFeriasSub_() {
+  var f = state.ferias;
+
+  document.getElementById('feResumoTable').innerHTML =
+    '<thead><tr><th>Pessoa</th><th>Data de admissão</th><th>Ciclo atual</th><th class="num">Dias tirados</th><th class="num">Dias restantes</th><th></th></tr></thead><tbody>' +
+    (f.resumo.length ? f.resumo.map(function(r) {
+      var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' a ' + fmtDataBR(r.cicloFim)) : '—';
+      var restanteHtml;
+      if (r.diasRestantes === null) {
+        restanteHtml = '<span class="status-pill vazio">' + (r.dataAdmissao ? 'ciclo ainda não completo' : 'sem data de admissão') + '</span>';
+      } else {
+        restanteHtml = '<span class="status-pill ' + (r.diasRestantes > 0 ? 'no-prazo' : 'vazio') + '">' + r.diasRestantes + ' dias</span>';
+      }
+      return '<tr><td><span class="rot-tag" style="background:' + corPessoa_(r.nome) + '">' + esc(r.nome) + '</span></td>' +
+        '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
+        '<td>' + ciclo + '</td>' +
+        '<td class="num">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</td>' +
+        '<td class="num">' + restanteHtml + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="editarFuncionarioDeFerias_(\'' + esc(r.nome) + '\',' + (r.dataDemissao ? 'true' : 'false') + ')" title="Editar data de admissão">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
+    '</tbody>';
+
+  document.getElementById('feListaTable').innerHTML =
+    '<thead><tr><th>Pessoa</th><th>Início</th><th>Fim</th><th class="num">Dias</th><th>Observação</th><th></th></tr></thead><tbody>' +
+    (f.ferias.length ? f.ferias.map(function(x) {
+      return '<tr><td><span class="rot-tag" style="background:' + corPessoa_(x.pessoa) + '">' + esc(x.pessoa) + '</span></td>' +
+        '<td>' + fmtDataBR(x.dataInicio) + '</td><td>' + fmtDataBR(x.dataFim) + '</td>' +
+        '<td class="num">' + x.dias + '</td><td>' + esc(x.observacao || '—') + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirFeriaModal(\'' + x.id + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum período registrado.</td></tr>') +
+    '</tbody>';
+
+  document.getElementById('fePessoaList').innerHTML =
+    pessoasConhecidasFerias_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
+}
+
+function renderAdmissaoSub_() {
+  var ativos = state.ferias.resumo.filter(function(r) { return !r.dataDemissao; });
+  document.getElementById('admissaoTable').innerHTML =
+    '<thead><tr><th>Nome</th><th>Data de admissão</th><th></th></tr></thead><tbody>' +
+    (ativos.length ? ativos.map(function(r) {
+      return '<tr><td><span class="rot-tag" style="background:' + corPessoa_(r.nome) + '">' + esc(r.nome) + '</span></td>' +
+        '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
+    '</tbody>';
+}
+
+function renderDemissaoSub_() {
+  var desligados = state.ferias.resumo.filter(function(r) { return r.dataDemissao; });
+  document.getElementById('demissaoTable').innerHTML =
+    '<thead><tr><th>Nome</th><th>Data de admissão</th><th>Data de demissão</th><th></th></tr></thead><tbody>' +
+    (desligados.length ? desligados.map(function(r) {
+      return '<tr><td><span class="rot-tag" style="background:' + corPessoa_(r.nome) + '">' + esc(r.nome) + '</span></td>' +
+        '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
+        '<td>' + fmtDataBR(r.dataDemissao) + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum desligamento registrado.</td></tr>') +
+    '</tbody>';
+}
+
+function pessoasConhecidasFerias_() {
+  var set = {};
+  (state.ferias.resumo || []).forEach(function(r) { set[r.nome] = true; });
+  getTodasTagsConhecidas_().forEach(function(t) { set[t] = true; });
+  return Object.keys(set).sort();
+}
+
+var feriaEditId = null;
+
+function abrirFeriaModal(id) {
+  feriaEditId = id || null;
+  var x = id ? state.ferias.ferias.filter(function(v){ return v.id===id; })[0] : null;
+  document.getElementById('feriaModalTitle').textContent = x ? 'Editar período de férias' : 'Novo período de férias';
+  document.getElementById('fePessoa').value = x ? x.pessoa : '';
+  document.getElementById('feDataInicio').value = x ? x.dataInicio : '';
+  document.getElementById('feDataFim').value = x ? x.dataFim : '';
+  document.getElementById('feObservacao').value = x ? x.observacao : '';
+  document.getElementById('feriaModalStatus').textContent = '';
+  document.getElementById('feDeleteBtn').style.display = x ? '' : 'none';
+  document.getElementById('feriaModal').classList.add('open');
+}
+
+function salvarFeria() {
+  var pessoa = document.getElementById('fePessoa').value.trim();
+  var dataInicio = document.getElementById('feDataInicio').value;
+  var dataFim = document.getElementById('feDataFim').value;
+  var status = document.getElementById('feriaModalStatus');
+  if (!pessoa || !dataInicio || !dataFim) { status.textContent = 'Informe a pessoa e o período.'; status.className = 'modal-status error'; return; }
+  if (dataFim < dataInicio) { status.textContent = 'A data final não pode ser anterior à inicial.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    id: feriaEditId, pessoa: pessoa, dataInicio: dataInicio, dataFim: dataFim,
+    observacao: document.getElementById('feObservacao').value.trim()
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(){ recarregarFerias_(function(){ fecharModal('feriaModal'); showToast('Férias salvas!', 'success'); }); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveFeria(TOKEN, payload);
+}
+
+function excluirFeria() {
+  if (!feriaEditId) return;
+  if (!window.confirm('Excluir este período de férias?')) return;
+  google.script.run
+    .withSuccessHandler(function(){ recarregarFerias_(function(){ fecharModal('feriaModal'); showToast('Período excluído.', 'success'); }); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
+    .deleteFeria(TOKEN, feriaEditId);
+}
+
+var funcionarioEditNomeOriginal = null;
+
+function abrirFuncionarioModal(nome) {
+  funcionarioEditNomeOriginal = nome || null;
+  var f = nome ? (state.ferias.funcionarios || []).filter(function(x){ return x.nome === nome; })[0] : null;
+  document.getElementById('funcionarioModalTitle').textContent = nome ? 'Editar funcionário' : 'Nova pessoa';
+  document.getElementById('fnNome').value = nome || '';
+  document.getElementById('fnDataAdmissao').value = f ? f.dataAdmissao : '';
+  document.getElementById('fnDataDemissao').value = f ? f.dataDemissao : '';
+  document.getElementById('funcionarioModalStatus').textContent = '';
+  document.getElementById('funcionarioModal').classList.add('open');
+}
+
+// Atalho usado pela aba Férias: pula direto pra sub-aba certa (Admissão ou
+// Demissão, conforme a pessoa já tenha sido desligada) e abre a edição.
+function editarFuncionarioDeFerias_(nome, temDemissao) {
+  switchFuncSubTab(temDemissao ? 'demissao' : 'admissao');
+  abrirFuncionarioModal(nome);
+}
+
+function salvarFuncionario() {
+  var nome = document.getElementById('fnNome').value.trim();
+  var status = document.getElementById('funcionarioModalStatus');
+  if (!nome) { status.textContent = 'Informe o nome.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    nome: nome,
+    nomeOriginal: funcionarioEditNomeOriginal,
+    dataAdmissao: document.getElementById('fnDataAdmissao').value,
+    dataDemissao: document.getElementById('fnDataDemissao').value
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(){ recarregarFerias_(function(){ fecharModal('funcionarioModal'); showToast('Funcionário salvo!', 'success'); }); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveFuncionario(TOKEN, payload);
+}
+
+// Após salvar/excluir período de férias ou dados de um funcionário, recarrega
+// o resumo (que alimenta as 3 sub-abas) e os eventos do calendário (que
+// refletem os períodos de férias).
+function recarregarFerias_(cb) {
+  google.script.run
+    .withSuccessHandler(function(d){ state.ferias = d; renderFuncionariosPagina(); recarregarEventos_(cb); })
+    .withFailureHandler(showError)
+    .getFeriasPagina(TOKEN);
+}
+
+function recarregarEventos_(cb) {
+  google.script.run
+    .withSuccessHandler(function(d){ state.eventos = d; renderCalendario(); renderDashboardRefresh(); if (cb) cb(); })
+    .withFailureHandler(function(){ if (cb) cb(); })
+    .getEventos(TOKEN);
 }
 
 // ── SECRETARIA ────────────────────────────────────────

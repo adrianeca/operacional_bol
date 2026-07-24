@@ -14,6 +14,8 @@ const ABA_ENTREGAS        = 'ENTREGAS';
 const ABA_HORARIOS        = 'HORARIOS';
 const ABA_ESCALA_SABADO   = 'ESCALA_SABADO';
 const ABA_AJUSTES_HORARIO = 'AJUSTES_HORARIO';
+const ABA_FERIAS          = 'FERIAS';
+const ABA_FUNCIONARIOS    = 'FUNCIONARIOS';
 
 const TZ = Session.getScriptTimeZone();
 
@@ -191,6 +193,24 @@ function eventoFromRow_(r) {
   };
 }
 
+// Eventos "virtuais" derivados da aba FERIAS, para aparecerem no Calendário e
+// no Dashboard sem duplicar dado (a aba FERIAS é a fonte da verdade). Têm id
+// prefixado com "ferias-" e não podem ser editados/excluídos por aqui.
+function eventosVirtuaisFerias_(token) {
+  return getFerias(token).map(function(f) {
+    return {
+      id: 'ferias-' + f.id,
+      dataInicio: f.dataInicio,
+      dataFim: f.dataFim,
+      titulo: 'Férias · ' + f.pessoa,
+      categoria: 'FERIAS',
+      observacao: f.observacao,
+      criadoPor: f.criadoPor,
+      criadoEm: f.criadoEm
+    };
+  });
+}
+
 function getEventos(token) {
   requireUser_(token);
   const rows = getEventosSheet_().getDataRange().getValues();
@@ -199,6 +219,7 @@ function getEventos(token) {
     if (!rows[i][2]) continue; // sem título
     out.push(eventoFromRow_(rows[i]));
   }
+  out.push.apply(out, eventosVirtuaisFerias_(token));
   out.sort(function(a, b) { return (a.dataInicio || '9999').localeCompare(b.dataInicio || '9999'); });
   return out;
 }
@@ -206,6 +227,10 @@ function getEventos(token) {
 function saveEvento(token, evento) {
   const user  = requireUser_(token);
   const sheet = getEventosSheet_();
+
+  if (evento.id && String(evento.id).indexOf('ferias-') === 0) {
+    throw new Error('Este evento vem da página Férias — edite ou exclua por lá.');
+  }
 
   const titulo = String(evento.titulo || '').trim();
   if (!titulo) throw new Error('Informe o título do evento.');
@@ -231,6 +256,9 @@ function saveEvento(token, evento) {
 
 function deleteEvento(token, id) {
   requireUser_(token);
+  if (String(id).indexOf('ferias-') === 0) {
+    throw new Error('Este evento vem da página Férias — edite ou exclua por lá.');
+  }
   const sheet = getEventosSheet_();
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -711,4 +739,292 @@ function getSecretaria(token) {
     escalaSabado: getEscalaSabado(token),
     ajustes: getAjustesHorario(token)
   };
+}
+
+// =============================================================================
+// FÉRIAS + FUNCIONÁRIOS (data de admissão)
+// =============================================================================
+
+function getFuncionariosSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_FUNCIONARIOS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_FUNCIONARIOS);
+    sheet.appendRow(['Nome', 'Data_Admissao', 'Data_Demissao', 'ID']);
+  }
+  return sheet;
+}
+
+function funcionarioFromRow_(r) {
+  const dataDemissao = fmtData_(r[2]);
+  return {
+    nome: String(r[0] || '').trim(),
+    dataAdmissao: fmtData_(r[1]),
+    dataDemissao: dataDemissao,
+    ativo: !dataDemissao,
+    id: String(r[3])
+  };
+}
+
+function getFuncionarios(token) {
+  requireUser_(token);
+  const rows = getFuncionariosSheet_().getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][0]) continue;
+    out.push(funcionarioFromRow_(rows[i]));
+  }
+  out.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
+  return out;
+}
+
+function saveFuncionario(token, f) {
+  requireUser_(token);
+  const sheet = getFuncionariosSheet_();
+
+  const nome = String(f.nome || '').trim();
+  if (!nome) throw new Error('Informe o nome.');
+  const chaveOriginal = norm_(f.nomeOriginal || nome);
+  const dataAdmissao = f.dataAdmissao ? new Date(f.dataAdmissao + 'T00:00:00') : '';
+  const dataDemissao = f.dataDemissao ? new Date(f.dataDemissao + 'T00:00:00') : '';
+
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (norm_(rows[i][0]) === chaveOriginal) {
+      sheet.getRange(i + 1, 1, 1, 3).setValues([[nome, dataAdmissao, dataDemissao]]);
+      return getFuncionarios(token);
+    }
+  }
+  sheet.appendRow([nome, dataAdmissao, dataDemissao, Utilities.getUuid()]);
+  return getFuncionarios(token);
+}
+
+function getFeriasSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_FERIAS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_FERIAS);
+    sheet.appendRow(['Pessoa', 'Data_Inicio', 'Data_Fim', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID']);
+  }
+  return sheet;
+}
+
+// Diferença de dias entre duas datas ISO (yyyy-MM-dd), inclusive nas duas pontas
+function diasEntre_(iso1, iso2) {
+  if (!iso1 || !iso2) return 0;
+  const a = new Date(iso1 + 'T00:00:00'), b = new Date(iso2 + 'T00:00:00');
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+function feriaFromRow_(r) {
+  const dataInicio = fmtData_(r[1]);
+  const dataFim = fmtData_(r[2]);
+  return {
+    id: String(r[6]),
+    pessoa: String(r[0] || '').trim(),
+    dataInicio: dataInicio,
+    dataFim: dataFim,
+    dias: diasEntre_(dataInicio, dataFim),
+    observacao: String(r[3] || '').trim(),
+    criadoPor: String(r[4] || '').trim(),
+    criadoEm: fmtDataHora_(r[5])
+  };
+}
+
+function getFerias(token) {
+  requireUser_(token);
+  const rows = getFeriasSheet_().getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][0] || !rows[i][1]) continue;
+    out.push(feriaFromRow_(rows[i]));
+  }
+  out.sort(function(a, b) { return (b.dataInicio || '').localeCompare(a.dataInicio || ''); });
+  return out;
+}
+
+function saveFeria(token, f) {
+  const user  = requireUser_(token);
+  const sheet = getFeriasSheet_();
+
+  const pessoa     = String(f.pessoa || '').trim();
+  const dataInicio = String(f.dataInicio || '').trim();
+  const dataFim    = String(f.dataFim || '').trim();
+  if (!pessoa || !dataInicio || !dataFim) throw new Error('Informe a pessoa e o período.');
+  if (dataFim < dataInicio) throw new Error('A data final não pode ser anterior à data inicial.');
+  const observacao = String(f.observacao || '').trim();
+  const ini = new Date(dataInicio + 'T00:00:00');
+  const fim = new Date(dataFim + 'T00:00:00');
+
+  if (f.id) {
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][6]) === String(f.id)) {
+        sheet.getRange(i + 1, 1, 1, 4).setValues([[pessoa, ini, fim, observacao]]);
+        return getFerias(token);
+      }
+    }
+    throw new Error('Período de férias não encontrado.');
+  }
+
+  sheet.appendRow([pessoa, ini, fim, observacao, user.email, new Date(), Utilities.getUuid()]);
+  return getFerias(token);
+}
+
+function deleteFeria(token, id) {
+  requireUser_(token);
+  const sheet = getFeriasSheet_();
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][6]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  return getFerias(token);
+}
+
+function addMeses_(data, meses) {
+  const d = new Date(data);
+  d.setMonth(d.getMonth() + meses);
+  return d;
+}
+
+// Calcula o ciclo de férias (regra CLT: períodos de 12 meses corridos contados
+// a partir da admissão) mais recente já concluído até hoje — é esse ciclo que
+// libera 30 dias a serem usados. Retorna null se ainda não completou 1 ano
+// de casa, ou se não há data de admissão cadastrada.
+function cicloFeriasAtual_(dataAdmissaoIso, hojeIso) {
+  if (!dataAdmissaoIso) return null;
+  const admissao = new Date(dataAdmissaoIso + 'T00:00:00');
+  const hoje = new Date(hojeIso + 'T00:00:00');
+
+  let n = 0;
+  while (addMeses_(admissao, (n + 1) * 12) <= hoje) n++;
+  if (n === 0) return null;
+
+  return {
+    inicio: fmtData_(addMeses_(admissao, (n - 1) * 12)),
+    fim: fmtData_(addMeses_(admissao, n * 12))
+  };
+}
+
+// Para cada pessoa (cadastrada em FUNCIONARIOS e/ou com férias lançadas),
+// calcula o saldo de dias do ciclo de férias atualmente em aberto.
+function getFeriasResumo(token) {
+  requireUser_(token);
+  const funcionarios = getFuncionarios(token);
+  const ferias = getFerias(token);
+  const hojeIso = fmtData_(new Date());
+
+  const pessoas = {};
+  funcionarios.forEach(function(f) { pessoas[norm_(f.nome)] = { nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao }; });
+  ferias.forEach(function(f) {
+    const k = norm_(f.pessoa);
+    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '' };
+  });
+
+  return Object.keys(pessoas).map(function(k) {
+    const p = pessoas[k];
+    const ciclo = cicloFeriasAtual_(p.dataAdmissao, hojeIso);
+    let diasTirados = 0;
+    if (ciclo) {
+      ferias.filter(function(f) {
+        return norm_(f.pessoa) === k && f.dataInicio >= ciclo.inicio && f.dataInicio < ciclo.fim;
+      }).forEach(function(f) { diasTirados += f.dias; });
+    }
+    return {
+      nome: p.nome,
+      dataAdmissao: p.dataAdmissao,
+      dataDemissao: p.dataDemissao,
+      cicloInicio: ciclo ? ciclo.inicio : '',
+      cicloFim: ciclo ? ciclo.fim : '',
+      diasTirados: ciclo ? diasTirados : null,
+      diasRestantes: ciclo ? Math.max(0, 30 - diasTirados) : null
+    };
+  }).sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
+}
+
+function getFeriasPagina(token) {
+  requireUser_(token);
+  return {
+    funcionarios: getFuncionarios(token),
+    ferias: getFerias(token),
+    resumo: getFeriasResumo(token)
+  };
+}
+
+// Seed único: registra as férias já cumpridas informadas em 2026. Rode
+// manualmente uma vez pelo editor do Apps Script (menu Executar →
+// popularFeriasIniciais). Pode rodar de novo sem medo: períodos já existentes
+// (mesma pessoa + mesmo início) não são duplicados.
+function popularFeriasIniciais() {
+  const sheet = getFeriasSheet_();
+  const rows  = sheet.getDataRange().getValues();
+
+  const existentes = new Set();
+  for (let i = 1; i < rows.length; i++) {
+    existentes.add(norm_(rows[i][0]) + '|' + fmtData_(rows[i][1]));
+  }
+
+  const periodos = [
+    ['Natasha', '2026-01-05', '2026-01-12'],
+    ['Elaine',  '2026-03-16', '2026-03-28'],
+    ['Aline',   '2026-03-09', '2026-03-18'],
+    ['Germana', '2026-03-16', '2026-03-29'],
+    ['Rafaela', '2026-04-06', '2026-04-11'],
+    ['Mel',     '2026-04-06', '2026-04-19'],
+    ['Natasha', '2026-05-11', '2026-05-15'],
+    ['Rosana',  '2026-05-18', '2026-05-31'],
+    ['Aline',   '2026-06-02', '2026-06-11']
+  ];
+
+  let adicionadas = 0;
+  periodos.forEach(function(p) {
+    const chave = norm_(p[0]) + '|' + p[1];
+    if (existentes.has(chave)) return;
+    sheet.appendRow([p[0], new Date(p[1] + 'T00:00:00'), new Date(p[2] + 'T00:00:00'), '', '', new Date(), Utilities.getUuid()]);
+    existentes.add(chave);
+    adicionadas++;
+  });
+
+  Logger.log(adicionadas + ' períodos de férias adicionados.');
+  return adicionadas;
+}
+
+// Seed único: registra a data de admissão da equipe administrativa da unidade
+// ONLINE (função ≠ PROFESSOR), conforme a aba "RJ - UNIDADES" da planilha de
+// RH da BRASAS. Rode manualmente uma vez pelo editor do Apps Script (menu
+// Executar → popularFuncionariosIniciais). Pode rodar de novo sem medo: nomes
+// já cadastrados não são sobrescritos.
+function popularFuncionariosIniciais() {
+  const sheet = getFuncionariosSheet_();
+  const rows  = sheet.getDataRange().getValues();
+
+  const existentes = new Set();
+  for (let i = 1; i < rows.length; i++) {
+    existentes.add(norm_(rows[i][0]));
+  }
+
+  const funcionarios = [
+    ['Natasha', '2016-05-11'], // NATASHA FRANCA SILVA XAVIER — Supervisor Administrativo
+    ['Elaine',  '2012-02-01'], // ELAINE CRISTINA DE LIMA — Secretaria
+    ['Aline',   '2014-08-14'], // ALINE CASTRO DA SILVA — Assistente Operacional
+    ['Germana', '2016-02-01'], // GERMANA FROTA PIRES FERNANDES — Coordenador
+    ['Rafaela', '2023-01-02'], // RAFAELA RAMOS DA SILVA — Secretaria
+    ['Mel',     '2011-02-10'], // MELLISE LOUSIE DO CARMO FONTES — Coordenador
+    ['Rosana',  '2022-01-26']  // ROSANA LISBOA DA SILVA — Secretaria
+  ];
+
+  let adicionadas = 0;
+  funcionarios.forEach(function(f) {
+    const chave = norm_(f[0]);
+    if (existentes.has(chave)) return;
+    sheet.appendRow([f[0], new Date(f[1] + 'T00:00:00'), '', Utilities.getUuid()]);
+    existentes.add(chave);
+    adicionadas++;
+  });
+
+  Logger.log(adicionadas + ' funcionários adicionados.');
+  return adicionadas;
 }
