@@ -16,6 +16,27 @@ const ABA_ESCALA_SABADO   = 'ESCALA_SABADO';
 const ABA_AJUSTES_HORARIO = 'AJUSTES_HORARIO';
 const ABA_FERIAS          = 'FERIAS';
 const ABA_FUNCIONARIOS    = 'FUNCIONARIOS';
+const ABA_CHECKLIST_ADMISSAO = 'ADMISSAO_CHECKLIST';
+
+// Itens do checklist de admissão, na ordem em que devem aparecer na tela.
+const CHECKLIST_ADMISSAO_ITENS = [
+  'Carta ou Exame',
+  'Sophia',
+  'E-mail',
+  'Grupos',
+  'Liberação Google Slides e provas (coord)',
+  'Acesso ao E-MAIL ADM',
+  'Canal My BRASAS',
+  'Aprovar ação no My BRASAS',
+  'Agenda',
+  'Acesso as provas',
+  'Transferência de turmas',
+  'Classroom',
+  'Classroom antigo',
+  'Drive',
+  'Form horas extras e cancelados',
+  'Coaching Session'
+];
 
 const TZ = Session.getScriptTimeZone();
 
@@ -217,6 +238,9 @@ function getEventos(token) {
   const out = [];
   for (let i = 1; i < rows.length; i++) {
     if (!rows[i][2]) continue; // sem título
+    // Férias não vêm mais de EVENTOS lançados manualmente — só da aba FERIAS
+    // (eventosVirtuaisFerias_ abaixo), pra não duplicar no Calendário.
+    if (String(rows[i][3]).trim().toUpperCase() === 'FERIAS') continue;
     out.push(eventoFromRow_(rows[i]));
   }
   out.push.apply(out, eventosVirtuaisFerias_(token));
@@ -750,7 +774,7 @@ function getFuncionariosSheet_() {
   let sheet = ss.getSheetByName(ABA_FUNCIONARIOS);
   if (!sheet) {
     sheet = ss.insertSheet(ABA_FUNCIONARIOS);
-    sheet.appendRow(['Nome', 'Data_Admissao', 'Data_Demissao', 'ID']);
+    sheet.appendRow(['Nome', 'Data_Admissao', 'Data_Demissao', 'Funcao', 'Apelido', 'ID']);
   }
   return sheet;
 }
@@ -761,8 +785,10 @@ function funcionarioFromRow_(r) {
     nome: String(r[0] || '').trim(),
     dataAdmissao: fmtData_(r[1]),
     dataDemissao: dataDemissao,
+    funcao: String(r[3] || '').trim(),
+    apelido: String(r[4] || '').trim(),
     ativo: !dataDemissao,
-    id: String(r[3])
+    id: String(r[5])
   };
 }
 
@@ -787,15 +813,17 @@ function saveFuncionario(token, f) {
   const chaveOriginal = norm_(f.nomeOriginal || nome);
   const dataAdmissao = f.dataAdmissao ? new Date(f.dataAdmissao + 'T00:00:00') : '';
   const dataDemissao = f.dataDemissao ? new Date(f.dataDemissao + 'T00:00:00') : '';
+  const funcao = String(f.funcao || '').trim();
+  const apelido = String(f.apelido || '').trim();
 
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (norm_(rows[i][0]) === chaveOriginal) {
-      sheet.getRange(i + 1, 1, 1, 3).setValues([[nome, dataAdmissao, dataDemissao]]);
+      sheet.getRange(i + 1, 1, 1, 5).setValues([[nome, dataAdmissao, dataDemissao, funcao, apelido]]);
       return getFuncionarios(token);
     }
   }
-  sheet.appendRow([nome, dataAdmissao, dataDemissao, Utilities.getUuid()]);
+  sheet.appendRow([nome, dataAdmissao, dataDemissao, funcao, apelido, Utilities.getUuid()]);
   return getFuncionarios(token);
 }
 
@@ -890,22 +918,26 @@ function addMeses_(data, meses) {
   return d;
 }
 
-// Calcula o ciclo de férias (regra CLT: períodos de 12 meses corridos contados
-// a partir da admissão) mais recente já concluído até hoje — é esse ciclo que
-// libera 30 dias a serem usados. Retorna null se ainda não completou 1 ano
-// de casa, ou se não há data de admissão cadastrada.
+// Calcula o ciclo de férias em aberto (regra CLT: o período aquisitivo de 12
+// meses mais recente já concluído libera 30 dias, a serem usados nos 12 meses
+// seguintes — o período concessivo). Retorna o período concessivo atual, ou
+// null se ainda não completou 1 ano de casa (nenhum período aquisitivo
+// concluído ainda), ou se não há data de admissão cadastrada.
 function cicloFeriasAtual_(dataAdmissaoIso, hojeIso) {
   if (!dataAdmissaoIso) return null;
   const admissao = new Date(dataAdmissaoIso + 'T00:00:00');
   const hoje = new Date(hojeIso + 'T00:00:00');
 
+  // n = quantos períodos aquisitivos de 12 meses já foram concluídos até hoje
   let n = 0;
   while (addMeses_(admissao, (n + 1) * 12) <= hoje) n++;
   if (n === 0) return null;
 
+  // o período concessivo (onde os dias podem/devem ser usados) começa quando
+  // o n-ésimo período aquisitivo termina, e vai até o término do seguinte
   return {
-    inicio: fmtData_(addMeses_(admissao, (n - 1) * 12)),
-    fim: fmtData_(addMeses_(admissao, n * 12))
+    inicio: fmtData_(addMeses_(admissao, n * 12)),
+    fim: fmtData_(addMeses_(admissao, (n + 1) * 12))
   };
 }
 
@@ -918,10 +950,12 @@ function getFeriasResumo(token) {
   const hojeIso = fmtData_(new Date());
 
   const pessoas = {};
-  funcionarios.forEach(function(f) { pessoas[norm_(f.nome)] = { nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao }; });
+  funcionarios.forEach(function(f) {
+    pessoas[norm_(f.nome)] = { nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, funcao: f.funcao, apelido: f.apelido };
+  });
   ferias.forEach(function(f) {
     const k = norm_(f.pessoa);
-    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '' };
+    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '' };
   });
 
   return Object.keys(pessoas).map(function(k) {
@@ -937,6 +971,8 @@ function getFeriasResumo(token) {
       nome: p.nome,
       dataAdmissao: p.dataAdmissao,
       dataDemissao: p.dataDemissao,
+      funcao: p.funcao,
+      apelido: p.apelido,
       cicloInicio: ciclo ? ciclo.inicio : '',
       cicloFim: ciclo ? ciclo.fim : '',
       diasTirados: ciclo ? diasTirados : null,
@@ -950,8 +986,56 @@ function getFeriasPagina(token) {
   return {
     funcionarios: getFuncionarios(token),
     ferias: getFerias(token),
-    resumo: getFeriasResumo(token)
+    resumo: getFeriasResumo(token),
+    checklist: getChecklistAdmissao(token)
   };
+}
+
+// =============================================================================
+// CHECKLIST DE ADMISSÃO
+// =============================================================================
+
+function getChecklistSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_CHECKLIST_ADMISSAO);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_CHECKLIST_ADMISSAO);
+    sheet.appendRow(['Nome', 'Item', 'Status', 'Atualizado_Por', 'Atualizado_Em']);
+  }
+  return sheet;
+}
+
+// Retorna a lista canônica de itens (pra a tela não precisar hardcodar de
+// novo) e as marcações já feitas (só as que têm status — item sem marcação
+// não gera linha na planilha).
+function getChecklistAdmissao(token) {
+  requireUser_(token);
+  const rows = getChecklistSheet_().getDataRange().getValues();
+  const marcacoes = [];
+  for (let i = 1; i < rows.length; i++) {
+    const status = String(rows[i][2] || '').trim();
+    if (!rows[i][0] || !status) continue;
+    marcacoes.push({ nome: String(rows[i][0]).trim(), item: String(rows[i][1]).trim(), status: status });
+  }
+  return { itens: CHECKLIST_ADMISSAO_ITENS, marcacoes: marcacoes };
+}
+
+function saveChecklistItem(token, nome, item, status) {
+  const user  = requireUser_(token);
+  const sheet = getChecklistSheet_();
+
+  const nomeNorm = norm_(nome);
+  const itemNorm = norm_(item);
+
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (norm_(rows[i][0]) === nomeNorm && norm_(rows[i][1]) === itemNorm) {
+      sheet.getRange(i + 1, 3, 1, 3).setValues([[status, user.email, new Date()]]);
+      return getChecklistAdmissao(token);
+    }
+  }
+  sheet.appendRow([nome, item, status, user.email, new Date()]);
+  return getChecklistAdmissao(token);
 }
 
 // Seed único: registra as férias já cumpridas informadas em 2026. Rode
@@ -976,7 +1060,10 @@ function popularFeriasIniciais() {
     ['Mel',     '2026-04-06', '2026-04-19'],
     ['Natasha', '2026-05-11', '2026-05-15'],
     ['Rosana',  '2026-05-18', '2026-05-31'],
-    ['Aline',   '2026-06-02', '2026-06-11']
+    ['Aline',   '2026-06-02', '2026-06-11'],
+    ['Bruna',   '2026-08-10', '2026-08-14'],
+    ['Elaine',  '2026-09-21', '2026-10-04'],
+    ['Nayara',  '2026-10-14', '2026-10-28']
   ];
 
   let adicionadas = 0;
@@ -1007,20 +1094,23 @@ function popularFuncionariosIniciais() {
   }
 
   const funcionarios = [
-    ['Natasha', '2016-05-11'], // NATASHA FRANCA SILVA XAVIER — Supervisor Administrativo
-    ['Elaine',  '2012-02-01'], // ELAINE CRISTINA DE LIMA — Secretaria
-    ['Aline',   '2014-08-14'], // ALINE CASTRO DA SILVA — Assistente Operacional
-    ['Germana', '2016-02-01'], // GERMANA FROTA PIRES FERNANDES — Coordenador
-    ['Rafaela', '2023-01-02'], // RAFAELA RAMOS DA SILVA — Secretaria
-    ['Mel',     '2011-02-10'], // MELLISE LOUSIE DO CARMO FONTES — Coordenador
-    ['Rosana',  '2022-01-26']  // ROSANA LISBOA DA SILVA — Secretaria
+    // nome,      data de admissão, função,                     nome completo (RH)
+    ['Natasha', '2016-05-11', 'Supervisor Administrativo'], // NATASHA FRANCA SILVA XAVIER
+    ['Elaine',  '2012-02-01', 'Secretaria'],                // ELAINE CRISTINA DE LIMA
+    ['Aline',   '2014-08-14', 'Assistente Operacional'],    // ALINE CASTRO DA SILVA
+    ['Germana', '2016-02-01', 'Coordenador'],               // GERMANA FROTA PIRES FERNANDES
+    ['Rafaela', '2023-01-02', 'Secretaria'],                // RAFAELA RAMOS DA SILVA
+    ['Mel',     '2011-02-10', 'Coordenador'],               // MELLISE LOUSIE DO CARMO FONTES
+    ['Rosana',  '2022-01-26', 'Secretaria'],                // ROSANA LISBOA DA SILVA
+    ['Bruna',   '2022-02-04', 'Secretaria'],                // BRUNA SANTOS LIMA
+    ['Nayara',  '2023-08-01', 'Secretaria']                 // NAYARA DOS SANTOS DE FARIAS REGIS
   ];
 
   let adicionadas = 0;
   funcionarios.forEach(function(f) {
     const chave = norm_(f[0]);
     if (existentes.has(chave)) return;
-    sheet.appendRow([f[0], new Date(f[1] + 'T00:00:00'), '', Utilities.getUuid()]);
+    sheet.appendRow([f[0], new Date(f[1] + 'T00:00:00'), '', f[2], '', Utilities.getUuid()]);
     existentes.add(chave);
     adicionadas++;
   });
