@@ -1446,24 +1446,24 @@ function renderAdmissaoSub_() {
   document.getElementById('admissaoTable').innerHTML =
     '<thead><tr><th>Nome</th><th>Apelido</th><th>Função</th><th>Data de admissão</th><th>Checklist</th><th></th></tr></thead><tbody>' +
     (ativos.length ? ativos.map(function(r) {
-      var feitos = checklistFeitos_(r.nome);
+      var feitos = checklistFeitos_(r.nome, 'ADMISSAO');
       return '<tr><td>' + esc(r.nome) + '</td>' +
         '<td>' + esc(r.apelido || '—') + '</td>' +
         '<td>' + esc(r.funcao || '—') + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
-        '<td><button class="btn-ghost btn-sm" onclick="abrirChecklistModal(\'' + esc(r.nome) + '\')">' + feitos + '/' + totalItens + ' feitos</button></td>' +
+        '<td><button class="btn-ghost btn-sm" onclick="abrirChecklistModal(\'' + esc(r.nome) + '\',\'ADMISSAO\')">' + feitos + '/' + totalItens + ' feitos</button></td>' +
         '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
     }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
     '</tbody>';
 }
 
-function checklistStatusPara_(nome, item) {
-  var m = state.ferias.checklist.marcacoes.filter(function(x) { return x.nome === nome && x.item === item; })[0];
+function checklistStatusPara_(nome, processo, item) {
+  var m = state.ferias.checklist.marcacoes.filter(function(x) { return x.nome === nome && x.processo === processo && x.item === item; })[0];
   return m ? m.status : '';
 }
 
-function checklistFeitos_(nome) {
-  return state.ferias.checklist.marcacoes.filter(function(x) { return x.nome === nome && x.status === 'Feito'; }).length;
+function checklistFeitos_(nome, processo) {
+  return state.ferias.checklist.marcacoes.filter(function(x) { return x.nome === nome && x.processo === processo && x.status === 'Feito'; }).length;
 }
 
 function checklistStatusStyle_(status) {
@@ -1474,18 +1474,22 @@ function checklistStatusStyle_(status) {
 }
 
 var checklistPessoaAtual_ = null;
+var checklistProcessoAtual_ = null;
 
-function abrirChecklistModal(nome) {
+function abrirChecklistModal(nome, processo) {
   checklistPessoaAtual_ = nome;
-  document.getElementById('checklistModalTitle').textContent = 'Checklist de admissão — ' + nome;
+  checklistProcessoAtual_ = processo;
+  document.getElementById('checklistModalTitle').textContent =
+    'Checklist de ' + (processo === 'DEMISSAO' ? 'demissão' : 'admissão') + ' — ' + nome;
   renderChecklistModalItens_();
   document.getElementById('checklistModal').classList.add('open');
 }
 
 function renderChecklistModalItens_() {
   var nome = checklistPessoaAtual_;
+  var processo = checklistProcessoAtual_;
   document.getElementById('checklistList').innerHTML = state.ferias.checklist.itens.map(function(item) {
-    var status = checklistStatusPara_(nome, item);
+    var status = checklistStatusPara_(nome, processo, item);
     return '<div class="who-row"><div class="who-name">' + esc(item) + '</div>' +
       '<select class="status-select" data-item="' + esc(item) + '" style="' + checklistStatusStyle_(status) + '" onchange="onChecklistItemChange_(this)">' +
       '<option value=""' + (status === '' ? ' selected' : '') + '>—</option>' +
@@ -1502,7 +1506,7 @@ function onChecklistItemChange_(selectEl) {
   google.script.run
     .withSuccessHandler(function(checklist) { state.ferias.checklist = checklist; renderAdmissaoSub_(); renderDemissaoSub_(); })
     .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderChecklistModalItens_(); })
-    .saveChecklistItem(TOKEN, checklistPessoaAtual_, item, status);
+    .saveChecklistItem(TOKEN, checklistPessoaAtual_, checklistProcessoAtual_, item, status);
 }
 
 function renderDemissaoSub_() {
@@ -1511,13 +1515,13 @@ function renderDemissaoSub_() {
   document.getElementById('demissaoTable').innerHTML =
     '<thead><tr><th>Nome</th><th>Apelido</th><th>Função</th><th>Data de admissão</th><th>Data de demissão</th><th>Checklist</th><th></th></tr></thead><tbody>' +
     (desligados.length ? desligados.map(function(r) {
-      var feitos = checklistFeitos_(r.nome);
+      var feitos = checklistFeitos_(r.nome, 'DEMISSAO');
       return '<tr><td>' + esc(r.nome) + '</td>' +
         '<td>' + esc(r.apelido || '—') + '</td>' +
         '<td>' + esc(r.funcao || '—') + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
         '<td>' + fmtDataBR(r.dataDemissao) + '</td>' +
-        '<td><button class="btn-ghost btn-sm" onclick="abrirChecklistModal(\'' + esc(r.nome) + '\')">' + feitos + '/' + totalItens + ' feitos</button></td>' +
+        '<td><button class="btn-ghost btn-sm" onclick="abrirChecklistModal(\'' + esc(r.nome) + '\',\'DEMISSAO\')">' + feitos + '/' + totalItens + ' feitos</button></td>' +
         '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
     }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum desligamento registrado.</td></tr>') +
     '</tbody>';

@@ -987,20 +987,23 @@ function getFeriasPagina(token) {
     funcionarios: getFuncionarios(token),
     ferias: getFerias(token),
     resumo: getFeriasResumo(token),
-    checklist: getChecklistAdmissao(token)
+    checklist: getChecklist(token)
   };
 }
 
 // =============================================================================
-// CHECKLIST DE ADMISSÃO
+// CHECKLIST DE ADMISSÃO / DEMISSÃO
 // =============================================================================
+// Mesma lista de 16 itens usada nos dois processos, mas com marcação
+// independente — a mesma pessoa pode ter status diferente pro mesmo item
+// dependendo se é o checklist de entrada (ADMISSAO) ou de saída (DEMISSAO).
 
 function getChecklistSheet_() {
   const ss = getOpSS_();
   let sheet = ss.getSheetByName(ABA_CHECKLIST_ADMISSAO);
   if (!sheet) {
     sheet = ss.insertSheet(ABA_CHECKLIST_ADMISSAO);
-    sheet.appendRow(['Nome', 'Item', 'Status', 'Atualizado_Por', 'Atualizado_Em']);
+    sheet.appendRow(['Nome', 'Processo', 'Item', 'Status', 'Atualizado_Por', 'Atualizado_Em']);
   }
   return sheet;
 }
@@ -1008,34 +1011,42 @@ function getChecklistSheet_() {
 // Retorna a lista canônica de itens (pra a tela não precisar hardcodar de
 // novo) e as marcações já feitas (só as que têm status — item sem marcação
 // não gera linha na planilha).
-function getChecklistAdmissao(token) {
+function getChecklist(token) {
   requireUser_(token);
   const rows = getChecklistSheet_().getDataRange().getValues();
   const marcacoes = [];
   for (let i = 1; i < rows.length; i++) {
-    const status = String(rows[i][2] || '').trim();
+    const status = String(rows[i][3] || '').trim();
     if (!rows[i][0] || !status) continue;
-    marcacoes.push({ nome: String(rows[i][0]).trim(), item: String(rows[i][1]).trim(), status: status });
+    marcacoes.push({
+      nome: String(rows[i][0]).trim(),
+      processo: String(rows[i][1] || '').trim().toUpperCase(),
+      item: String(rows[i][2]).trim(),
+      status: status
+    });
   }
   return { itens: CHECKLIST_ADMISSAO_ITENS, marcacoes: marcacoes };
 }
 
-function saveChecklistItem(token, nome, item, status) {
+function saveChecklistItem(token, nome, processo, item, status) {
   const user  = requireUser_(token);
   const sheet = getChecklistSheet_();
 
   const nomeNorm = norm_(nome);
+  const processoNorm = String(processo || '').trim().toUpperCase();
   const itemNorm = norm_(item);
 
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (norm_(rows[i][0]) === nomeNorm && norm_(rows[i][1]) === itemNorm) {
-      sheet.getRange(i + 1, 3, 1, 3).setValues([[status, user.email, new Date()]]);
-      return getChecklistAdmissao(token);
+    if (norm_(rows[i][0]) === nomeNorm &&
+        String(rows[i][1] || '').trim().toUpperCase() === processoNorm &&
+        norm_(rows[i][2]) === itemNorm) {
+      sheet.getRange(i + 1, 4, 1, 3).setValues([[status, user.email, new Date()]]);
+      return getChecklist(token);
     }
   }
-  sheet.appendRow([nome, item, status, user.email, new Date()]);
-  return getChecklistAdmissao(token);
+  sheet.appendRow([nome, processoNorm, item, status, user.email, new Date()]);
+  return getChecklist(token);
 }
 
 // Seed único: registra as férias já cumpridas informadas em 2026. Rode
@@ -1108,7 +1119,11 @@ function popularFuncionariosIniciais() {
     { nome: 'Alana Tomazetti Carvalho',          apelido: 'Avril',   dataAdmissao: '2024-02-05', dataDemissao: '2025-07-03', funcao: 'PROFESSOR' },
     { nome: 'Caio Mascheroni Costa Gonçalves',   apelido: 'Fred',    dataAdmissao: '2023-02-01', dataDemissao: '2025-12-16', funcao: 'PROFESSOR' },
     { nome: 'Carolina Mourão Mello',             apelido: 'Phoenix', dataAdmissao: '2025-02-03', dataDemissao: '2025-12-17', funcao: 'PROFESSOR' },
-    { nome: 'Larissa da Silva Cury',             apelido: 'Cury',    dataAdmissao: '2025-08-01', dataDemissao: '2026-06-01', funcao: 'PROFESSOR' }
+    { nome: 'Larissa da Silva Cury',             apelido: 'Cury',    dataAdmissao: '2025-08-01', dataDemissao: '2026-06-01', funcao: 'PROFESSOR' },
+    // Novas, vindas junto com o checklist de admissão
+    { nome: 'Fairuzz Jabbour',          dataAdmissao: '2025-08-01' },
+    { nome: 'Lucas Ventura dos Santos', dataAdmissao: '2026-02-03' },
+    { nome: 'Taiza Aguiar Ferreira',    dataAdmissao: '2026-06-01' }
   ];
 
   let adicionadas = 0;
@@ -1128,5 +1143,83 @@ function popularFuncionariosIniciais() {
   });
 
   Logger.log(adicionadas + ' funcionários adicionados.');
+  return adicionadas;
+}
+
+// Marcações trazidas dos controles de admissão/desligamento: valores na mesma
+// ordem de CHECKLIST_ADMISSAO_ITENS (os 10 primeiros itens vinham como
+// TRUE/FALSE na planilha de origem, os 6 últimos já como Feito/Não se
+// aplica). TRUE e FEITO viram "Feito"; FALSE e célula vazia viram "ainda não
+// feito" (sem marcação, não gera linha). A mesma pessoa pode ter valores
+// diferentes pro mesmo item entre admissão e demissão — são checklists
+// independentes.
+const CHECKLIST_ADMISSAO_BRUTO_ = {
+  'Rosana Lisboa da Silva':     ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','FALSE','TRUE','FALSE','NAO SE APLICA','NAO SE APLICA','NAO SE APLICA','NAO SE APLICA','NAO SE APLICA','NAO SE APLICA'],
+  'Larissa da Silva Cury':      ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','FALSE','TRUE','FALSE','FEITO','FEITO','NAO SE APLICA','FEITO','FEITO','FEITO'],
+  'Fairuzz Jabbour':            ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','FALSE','TRUE','FALSE','FEITO','FEITO','NAO SE APLICA','FEITO','FEITO','FEITO'],
+  'Lucas Ventura dos Santos':   ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','FALSE','FALSE','FALSE','NAO SE APLICA','NAO SE APLICA','NAO SE APLICA','FEITO','FEITO','FEITO'],
+  'Taiza Aguiar Ferreira':      ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','FALSE','FALSE','FALSE','FEITO','FEITO','NAO SE APLICA','FEITO','','FEITO'],
+  'Caren Xavier Lucena da Silva': ['TRUE','TRUE','TRUE','FALSE','FALSE','TRUE','TRUE','TRUE','TRUE','TRUE','NAO SE APLICA','FEITO','NAO SE APLICA','FEITO','','NAO SE APLICA']
+};
+
+const CHECKLIST_DEMISSAO_BRUTO_ = {
+  'Alana Tomazetti Carvalho':        ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','FALSE','TRUE','FALSE','FEITO','FEITO','FEITO','FEITO','FEITO','NAO SE APLICA'],
+  'Caio Mascheroni Costa Gonçalves': ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','TRUE','TRUE','FALSE','','FEITO','FEITO','FEITO','FEITO','NAO SE APLICA'],
+  'Carolina Mourão Mello':           ['TRUE','TRUE','TRUE','TRUE','TRUE','FALSE','TRUE','TRUE','TRUE','FALSE','FEITO','FEITO','NAO SE APLICA','FEITO','FEITO','NAO SE APLICA'],
+  'Larissa da Silva Cury':           ['TRUE','TRUE','TRUE','TRUE','FALSE','FALSE','TRUE','FALSE','FALSE','FALSE','FEITO','FEITO','NAO SE APLICA','FEITO','','NAO SE APLICA']
+};
+
+function checklistStatusDeBruto_(raw) {
+  const v = String(raw || '').trim().toUpperCase();
+  if (v === 'TRUE' || v === 'FEITO') return 'Feito';
+  if (v === 'NAO SE APLICA' || v === 'NÃO SE APLICA') return 'Não se aplica';
+  return ''; // FALSE ou célula vazia = ainda não feito
+}
+
+function popularChecklistBruto_(processo, dados) {
+  const sheet = getChecklistSheet_();
+  const rows  = sheet.getDataRange().getValues();
+
+  const existentes = new Set();
+  for (let i = 1; i < rows.length; i++) {
+    existentes.add(norm_(rows[i][0]) + '|' + String(rows[i][1] || '').trim().toUpperCase() + '|' + norm_(rows[i][2]));
+  }
+
+  let adicionadas = 0;
+  Object.keys(dados).forEach(function(nome) {
+    const valores = dados[nome];
+    CHECKLIST_ADMISSAO_ITENS.forEach(function(item, i) {
+      const status = checklistStatusDeBruto_(valores[i]);
+      if (!status) return;
+      const chave = norm_(nome) + '|' + processo + '|' + norm_(item);
+      if (existentes.has(chave)) return;
+      sheet.appendRow([nome, processo, item, status, '', new Date()]);
+      existentes.add(chave);
+      adicionadas++;
+    });
+  });
+
+  return adicionadas;
+}
+
+// Seed único: registra as marcações de checklist de admissão já feitas pra
+// essas pessoas. Rode manualmente uma vez pelo editor do Apps Script (menu
+// Executar → popularChecklistAdmissaoInicial). Pode rodar de novo sem medo:
+// marcações já existentes (mesma pessoa + processo + item) não são
+// sobrescritas.
+function popularChecklistAdmissaoInicial() {
+  const adicionadas = popularChecklistBruto_('ADMISSAO', CHECKLIST_ADMISSAO_BRUTO_);
+  Logger.log(adicionadas + ' marcações de checklist de admissão adicionadas.');
+  return adicionadas;
+}
+
+// Seed único: registra as marcações de checklist de desligamento já feitas
+// para as professoras desligadas. Rode manualmente uma vez pelo editor do
+// Apps Script (menu Executar → popularChecklistDemissaoInicial). Pode rodar
+// de novo sem medo: marcações já existentes (mesma pessoa + processo + item)
+// não são sobrescritas.
+function popularChecklistDemissaoInicial() {
+  const adicionadas = popularChecklistBruto_('DEMISSAO', CHECKLIST_DEMISSAO_BRUTO_);
+  Logger.log(adicionadas + ' marcações de checklist de demissão adicionadas.');
   return adicionadas;
 }
