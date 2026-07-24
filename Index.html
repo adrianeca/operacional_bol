@@ -1404,10 +1404,12 @@ function renderFuncionariosPagina() {
 
 function renderFeriasSub_() {
   var f = state.ferias;
+  // Só mostra quem está ativo — gente desligada não tem ciclo de férias em aberto.
+  var ativos = f.resumo.filter(function(r) { return !r.dataDemissao; });
 
   document.getElementById('feResumoTable').innerHTML =
     '<thead><tr><th>Pessoa</th><th>Data de admissão</th><th>Ciclo atual</th><th class="num">Dias tirados</th><th class="num">Dias restantes</th><th></th></tr></thead><tbody>' +
-    (f.resumo.length ? f.resumo.map(function(r) {
+    (ativos.length ? ativos.map(function(r) {
       var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' a ' + fmtDataBR(r.cicloFim)) : '—';
       var restanteHtml;
       if (r.diasRestantes === null) {

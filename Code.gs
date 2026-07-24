@@ -1079,11 +1079,12 @@ function popularFeriasIniciais() {
   return adicionadas;
 }
 
-// Seed único: registra a data de admissão da equipe administrativa da unidade
-// ONLINE (função ≠ PROFESSOR), conforme a aba "RJ - UNIDADES" da planilha de
-// RH da BRASAS. Rode manualmente uma vez pelo editor do Apps Script (menu
-// Executar → popularFuncionariosIniciais). Pode rodar de novo sem medo: nomes
-// já cadastrados não são sobrescritos.
+// Seed único: registra funcionários (equipe administrativa ativa da unidade
+// ONLINE + algumas professoras já desligadas), conforme a aba "RJ - UNIDADES"
+// da planilha de RH da BRASAS — nome, apelido e função copiados literalmente
+// das colunas C/G/F de lá, sem reformatar capitalização. Rode manualmente uma
+// vez pelo editor do Apps Script (menu Executar → popularFuncionariosIniciais).
+// Pode rodar de novo sem medo: nomes já cadastrados não são sobrescritos.
 function popularFuncionariosIniciais() {
   const sheet = getFuncionariosSheet_();
   const rows  = sheet.getDataRange().getValues();
@@ -1094,23 +1095,34 @@ function popularFuncionariosIniciais() {
   }
 
   const funcionarios = [
-    // nome,      data de admissão, função,                     nome completo (RH)
-    ['Natasha', '2016-05-11', 'Supervisor Administrativo'], // NATASHA FRANCA SILVA XAVIER
-    ['Elaine',  '2012-02-01', 'Secretaria'],                // ELAINE CRISTINA DE LIMA
-    ['Aline',   '2014-08-14', 'Assistente Operacional'],    // ALINE CASTRO DA SILVA
-    ['Germana', '2016-02-01', 'Coordenador'],               // GERMANA FROTA PIRES FERNANDES
-    ['Rafaela', '2023-01-02', 'Secretaria'],                // RAFAELA RAMOS DA SILVA
-    ['Mel',     '2011-02-10', 'Coordenador'],               // MELLISE LOUSIE DO CARMO FONTES
-    ['Rosana',  '2022-01-26', 'Secretaria'],                // ROSANA LISBOA DA SILVA
-    ['Bruna',   '2022-02-04', 'Secretaria'],                // BRUNA SANTOS LIMA
-    ['Nayara',  '2023-08-01', 'Secretaria']                 // NAYARA DOS SANTOS DE FARIAS REGIS
+    { nome: 'Natasha', dataAdmissao: '2016-05-11', funcao: 'SUPERVISOR ADMINISTRATIVO' },
+    { nome: 'Elaine',  dataAdmissao: '2012-02-01', funcao: 'SECRETARIA' },
+    { nome: 'Aline',   dataAdmissao: '2014-08-14', funcao: 'ASSISTENTE OPERACIONAL' },
+    { nome: 'Germana', dataAdmissao: '2016-02-01', funcao: 'COORDENADOR' },
+    { nome: 'Rafaela', dataAdmissao: '2023-01-02', funcao: 'SECRETARIA' },
+    { nome: 'Mel',     dataAdmissao: '2011-02-10', funcao: 'COORDENADOR' },
+    { nome: 'Rosana',  dataAdmissao: '2022-01-26', funcao: 'SECRETARIA' },
+    { nome: 'Bruna',   dataAdmissao: '2022-02-04', funcao: 'SECRETARIA' },
+    { nome: 'Nayara',  dataAdmissao: '2023-08-01', funcao: 'SECRETARIA' },
+    // Desligadas
+    { nome: 'Alana Tomazetti Carvalho',          apelido: 'Avril',   dataAdmissao: '2024-02-05', dataDemissao: '2025-07-03', funcao: 'PROFESSOR' },
+    { nome: 'Caio Mascheroni Costa Gonçalves',   apelido: 'Fred',    dataAdmissao: '2023-02-01', dataDemissao: '2025-12-16', funcao: 'PROFESSOR' },
+    { nome: 'Carolina Mourão Mello',             apelido: 'Phoenix', dataAdmissao: '2025-02-03', dataDemissao: '2025-12-17', funcao: 'PROFESSOR' },
+    { nome: 'Larissa da Silva Cury',             apelido: 'Cury',    dataAdmissao: '2025-08-01', dataDemissao: '2026-06-01', funcao: 'PROFESSOR' }
   ];
 
   let adicionadas = 0;
   funcionarios.forEach(function(f) {
-    const chave = norm_(f[0]);
+    const chave = norm_(f.nome);
     if (existentes.has(chave)) return;
-    sheet.appendRow([f[0], new Date(f[1] + 'T00:00:00'), '', f[2], '', Utilities.getUuid()]);
+    sheet.appendRow([
+      f.nome,
+      new Date(f.dataAdmissao + 'T00:00:00'),
+      f.dataDemissao ? new Date(f.dataDemissao + 'T00:00:00') : '',
+      f.funcao || '',
+      f.apelido || '',
+      Utilities.getUuid()
+    ]);
     existentes.add(chave);
     adicionadas++;
   });
