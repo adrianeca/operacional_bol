@@ -59,8 +59,13 @@ function fmtData_(v) {
   return String(v);
 }
 
+// Cacheado por execução: cada chamada do cliente pode acionar dezenas de leituras
+// de abas diferentes, e reabrir a planilha por ID a cada uma delas sobrecarrega o
+// serviço de Planilhas (erro RESOURCE_EXHAUSTED). Abrindo uma vez só por execução.
+let _opSS_ = null;
 function getOpSS_() {
-  return SpreadsheetApp.openById(OPERACIONAL_SHEET_ID);
+  if (!_opSS_) _opSS_ = SpreadsheetApp.openById(OPERACIONAL_SHEET_ID);
+  return _opSS_;
 }
 
 // =============================================================================
@@ -86,10 +91,27 @@ function getUserFromHub(token) {
   return requireUser_(token);
 }
 
+// Cacheados por execução: requireUser_ roda no início de toda função exposta,
+// inclusive nas chamadas aninhadas (ex.: getDashboard chama getHorarios, que
+// chama requireUser_ de novo). Sem isso, um único carregamento do painel abre
+// a planilha do Hub e refaz a busca na aba SESSOES dezenas de vezes, o que
+// também contribui para o erro RESOURCE_EXHAUSTED.
+let _hubSS_ = null;
+const _sessionUserCache_ = {};
+
 function getSessionUser_(token) {
   if (!token) return null;
+  const tokenKey = String(token).trim();
+  if (_sessionUserCache_.hasOwnProperty(tokenKey)) return _sessionUserCache_[tokenKey];
+  const user = getSessionUserUncached_(token); // deixa erro de permissão propagar sem cachear
+  _sessionUserCache_[tokenKey] = user;
+  return user;
+}
+
+function getSessionUserUncached_(token) {
   try {
-    const ss       = SpreadsheetApp.openById(HUB_SS_ID);
+    if (!_hubSS_) _hubSS_ = SpreadsheetApp.openById(HUB_SS_ID);
+    const ss       = _hubSS_;
     const sesSheet = ss.getSheetByName('SESSOES');
     if (!sesSheet) return null;
 
