@@ -59,6 +59,15 @@ function fmtData_(v) {
   return String(v);
 }
 
+// O Sheets converte texto tipo "07:00" (uma hora só, sem " - ") pra um valor de
+// hora/data internamente quando salvo via setValues; sem isso, String(v) vira
+// "Sat Dec 30 1899 07:00:00 GMT...".
+function fmtHora_(v) {
+  if (!v) return '';
+  if (v instanceof Date) return Utilities.formatDate(v, TZ, 'HH:mm');
+  return String(v).trim();
+}
+
 // Cacheado por execução: cada chamada do cliente pode acionar dezenas de leituras
 // de abas diferentes, e reabrir a planilha por ID a cada uma delas sobrecarrega o
 // serviço de Planilhas (erro RESOURCE_EXHAUSTED). Abrindo uma vez só por execução.
@@ -734,8 +743,8 @@ function ajusteFromRow_(r) {
     tipo: String(r[9] || '').trim(),
     quemSai: String(r[10] || '').trim(),
     quemCobre: String(r[11] || '').trim(),
-    horarioDe: String(r[12] || '').trim(),
-    horarioPara: String(r[13] || '').trim()
+    horarioDe: fmtHora_(r[12]),
+    horarioPara: fmtHora_(r[13])
   };
 }
 
@@ -773,14 +782,19 @@ function saveAjusteHorario(token, a) {
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][7]) === String(a.id)) {
         sheet.getRange(i + 1, 1, 1, 5).setValues([[atividade, data, status, data.getMonth() + 1, data.getFullYear()]]);
-        sheet.getRange(i + 1, 9, 1, 6).setValues([[tags, tipo, quemSai, quemCobre, horarioDe, horarioPara]]);
+        sheet.getRange(i + 1, 9, 1, 4).setValues([[tags, tipo, quemSai, quemCobre]]);
+        // Colunas de horário precisam ser texto puro, senão o Sheets converte
+        // um valor tipo "07:00" (sem " - ") num serial de hora automaticamente.
+        sheet.getRange(i + 1, 13, 1, 2).setNumberFormat('@').setValues([[horarioDe, horarioPara]]);
         return getAjustesHorario(token);
       }
     }
     throw new Error('Ajuste não encontrado.');
   }
 
-  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(), tags, tipo, quemSai, quemCobre, horarioDe, horarioPara]);
+  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(), tags, tipo, quemSai, quemCobre, '', '']);
+  const lastRow = sheet.getLastRow();
+  sheet.getRange(lastRow, 13, 1, 2).setNumberFormat('@').setValues([[horarioDe, horarioPara]]);
   return getAjustesHorario(token);
 }
 

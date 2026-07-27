@@ -573,3 +573,39 @@ function migrarAjustesParaNovoModelo() {
     (idsNoMapaNaoAplicados.length ? '\n(' + idsNoMapaNaoAplicados.join(', ') + ')' : '')
   );
 }
+
+// =============================================================================
+// MIGRAÇÃO 3 — Corrige células de "Horário de"/"Horário para" que o Sheets
+// converteu sozinho num valor de data/hora (ex: "07:00" sem " - " vira
+// internamente "Sat Dec 30 1899 07:00:00..."). Reescreve como texto "HH:mm"
+// e marca as colunas como texto puro pra não acontecer de novo.
+//
+// Rode migrarAjustesParaNovoModelo() antes desta, se ainda não rodou.
+// =============================================================================
+
+function corrigirFormatoHorariosAjustes() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('AJUSTES_HORARIO');
+  if (!sheet) { Logger.log('Aba AJUSTES_HORARIO não encontrada.'); return; }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('Nenhuma linha de dado.'); return; }
+
+  const range = sheet.getRange(2, 13, lastRow - 1, 2); // colunas M:N = Horário de / Horário para
+  const values = range.getValues();
+  const tz = Session.getScriptTimeZone();
+  let corrigidos = 0;
+
+  const novos = values.map(function(row) {
+    return row.map(function(v) {
+      if (v instanceof Date) {
+        corrigidos++;
+        return Utilities.formatDate(v, tz, 'HH:mm');
+      }
+      return v;
+    });
+  });
+
+  range.setNumberFormat('@').setValues(novos);
+  Logger.log('Células de horário corrigidas para texto: ' + corrigidos);
+}
