@@ -460,3 +460,116 @@ function _popularAjustes_(ss) {
 
   _escrever_(ss, 'AJUSTES_HORARIO', rows, [2, 7]);
 }
+
+// =============================================================================
+// MIGRAÇÃO 2 — Reclassifica os ajustes de horário já lançados (texto livre)
+// pro novo modelo estruturado (Tipo / Quem sai / Quem cobre / Horário para).
+// Não mexe na coluna Atividade (fica como observação) nem em Registrado_Por/Em.
+//
+// 1. Abra o Apps Script da planilha (Extensões → Apps Script)
+// 2. Cole este arquivo inteiro (ou só esta função, se o resto já estiver lá)
+// 3. Rode a função migrarAjustesParaNovoModelo()
+// =============================================================================
+
+function migrarAjustesParaNovoModelo() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('AJUSTES_HORARIO');
+  if (!sheet) { SpreadsheetApp.getUi().alert('Aba AJUSTES_HORARIO não encontrada.'); return; }
+
+  // Garante que as colunas novas existem (mesma lógica do getAjustesSheet_ do Code.gs)
+  const header = sheet.getRange(1, 1, 1, 14).getValues()[0];
+  if (!header[8])  sheet.getRange(1, 9).setValue('Tags');
+  if (!header[9])  sheet.getRange(1, 10).setValue('Tipo');
+  if (!header[10]) sheet.getRange(1, 11).setValue('Quem sai');
+  if (!header[11]) sheet.getRange(1, 12).setValue('Quem cobre');
+  if (!header[12]) sheet.getRange(1, 13).setValue('Horário de');
+  if (!header[13]) sheet.getRange(1, 14).setValue('Horário para');
+
+  // Chave: ID da linha (coluna H). Valor: [status novo, tipo, quemSai, quemCobre, horarioPara]
+  const MAPA = {
+    '57a3a0b6-4eee-4579-bba9-91504d5a3208': ['Confirmado', 'Falta', 'Elaine', '', ''],
+    '531d055c-2a8c-4c1f-a437-f3ca47bb624b': ['Confirmado', 'Falta', 'Elaine', '', ''],
+    '3225fd2c-08c8-4368-8f90-9fdc3fc211bf': ['Confirmado', 'Falta', 'Elaine', '', ''],
+    '4b1bbf8f-8263-4836-81e6-81c97f016f55': ['Confirmado', 'Horário pontual', '', 'Nayara', '12:30 - 21:30'],
+    '43e2acb6-e9f6-41db-b088-4275e465fd3f': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00 - 16:00'],
+    'dc51735c-71f3-4c65-8457-b40ef439b2a5': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00 - 16:00'],
+    '2095c024-c697-47eb-b8be-cdcbf276266e': ['Confirmado', 'Horário pontual', '', 'Bruna', '09:00 - 17:00'],
+    '6082aeba-13da-4b9b-b7cf-fe676d53022c': ['Confirmado', 'Horário pontual', '', 'Bruna', '09:00 - 17:00'],
+    '28acacfb-05aa-480f-a4f1-87476f549b7b': ['Confirmado', 'Cobertura', 'Bruna', 'Elaine', ''],
+    'd004d16d-a243-40e0-a439-8009c57411bb': ['Confirmado', 'Falta', 'Rosana', '', ''],
+    '986b9804-4c4d-429f-be47-245715fd5653': ['Confirmado', 'Falta', 'Rosana', '', ''],
+    'aca56a1d-fe73-4641-b53c-0c70b92b61c5': ['Confirmado', 'Falta', 'Elaine', '', ''],
+    'd8d0704c-0d0a-4833-8988-af59208af137': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00 - 16:00'],
+    '43d42d8c-b884-4fef-9249-364f27e3c0a1': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00'],
+    '3c0819f3-0853-4ff2-a18e-d30f9da7a78f': ['Confirmado', 'Falta', 'Nayara', '', ''],
+    '6e6320c6-78d8-42df-a6b9-a158a4e32c43': ['Confirmado', 'Troca', 'Rafaela', 'Nayara', ''],
+    '0c7ac77d-fddb-4426-b661-cc2d57857e90': ['Confirmado', 'Horário pontual', '', 'Bruna', '08:00 - 17:00'],
+    '64bc779d-f385-49f6-a51e-d769686b84ee': ['Confirmado', 'Cobertura', 'Elaine', 'Nayara', ''],
+    '695dfb17-cb48-419a-abe2-e597ab8fa112': ['Confirmado', 'Horário pontual', '', 'Bruna', '09:00 - 18:00'],
+    '2426af8e-e038-4598-901f-411afabe626f': ['Confirmado', 'Troca', 'Bruna', 'Rosana', ''],
+    '100b4194-bd45-490f-a883-25122f1706f9': ['Confirmado', 'Horário pontual', '', 'Elaine', '07:00'],
+    'e0d27866-4455-403a-bded-f30dcb9d3833': ['Confirmado', 'Horário pontual', '', 'Elaine', '07:00'],
+    '72a75d0b-968e-4b88-b81b-4ab8a786971f': ['A confirmar', '', 'Rosana', '', ''],
+    'c174deb6-a94b-4004-b2ac-d46a0d8cef1b': ['Confirmado', 'Falta', 'Bruna', '', ''],
+    '1fd0876e-7ee3-42eb-b194-8bcbaab9741c': ['Confirmado', 'Falta', 'Nayara / Rosana', '', ''],
+    '4273e349-ce89-43a6-9973-7a0d16098e5d': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00'],
+    'f87dad6a-dff1-44ed-bb3d-f1cd1670e6a0': ['Confirmado', 'Troca', 'Rafaela', 'Bruna', ''],
+    'eeca90fb-e226-4b78-8195-dc6a9d55383f': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00'],
+    'b223db8a-c39e-40e3-919b-6f35387acb5d': ['Confirmado', 'Horário pontual', '', 'Bruna', '11:30 - 20:30'],
+    '9ca35fd6-9946-4498-b185-8ee65d0e57cc': ['Confirmado', 'Horário pontual', '', 'Bruna', '11:30 - 20:30'],
+    'a3ecfc96-deea-4dd8-b159-2eaa9efa656e': ['Confirmado', 'Horário pontual', '', 'Nayara', '11:30 - 20:30'],
+    '5d84b65b-a3e8-4fbd-ae1d-4cd801c6243d': ['Confirmado', 'Troca', 'Nayara', 'Rafaela', ''],
+    'bda64574-6474-44f9-87b5-2b942d03734b': ['Confirmado', 'Troca', 'Bruna', 'Nayara', ''],
+    '41d6ad31-8e1f-4d31-bf11-bc20b07930f3': ['Confirmado', 'Falta', 'Rafaela', '', ''],
+    'c40c46a1-522d-477d-bcca-9fbbf2cc6c17': ['Confirmado', 'Horário pontual', '', 'Bruna', '11:00 - 20:00'],
+    '1bb61d20-65a7-4b45-9a83-28e3cfe86af1': ['Confirmado', 'Horário pontual', '', 'Nayara', '12:30 - 21:30'],
+    '2fa986d8-abc2-4aef-9d38-fd4b6eb58e18': ['Confirmado', 'Cobertura', 'Rosana', 'Nayara', ''],
+    'cc7273df-21fa-4a13-ab4a-12c0df909d0d': ['Confirmado', 'Cobertura', 'Rosana', 'Bruna', ''],
+    '3af420e0-0007-488d-93f4-27d5361dbd0f': ['Confirmado', 'Falta', 'Bruna', '', ''],
+    '1fcb4d1c-532d-4ffe-ab4d-e05ee0d8b07e': ['Confirmado', 'Horário pontual', '', 'Nayara', '07:00'],
+    'ae42476f-89af-489d-ae56-0bec5e16ab69': ['Confirmado', 'Troca', 'Bruna', 'Rafaela', ''],
+    'af12c7ea-6ee9-4bc0-b60a-5ab7ff5e827a': ['Confirmado', 'Horário pontual', '', 'Rafaela', '14:46'],
+    '4ab2a129-7188-419d-a4ae-579083c6dd1d': ['Confirmado', 'Horário pontual', '', 'Rafaela', '13:30'],
+    '3a30969d-2f8a-4ae4-a897-7c0e8e812fd5': ['Confirmado', 'Troca', 'Nayara', 'Rafaela', ''],
+    '5a8e5749-59b3-4cda-bf71-ee47931b6a87': ['Confirmado', 'Horário pontual', '', 'Rafaela', '09:00 - 18:00'],
+    '5b69f7ba-625a-4083-9d76-af256146b64f': ['A confirmar', 'Horário pontual', '', 'Rafaela', '13:00'],
+    '8d12c746-dc92-4198-9de1-a1ed2c5c406b': ['Confirmado', 'Horário pontual', '', 'Elaine', ''],
+    '6cd1f4ad-5f0f-401d-9cce-8f32da87d8a3': ['A confirmar', 'Horário pontual', '', 'Rosana', '12:58'],
+    '0f2d2a4d-8023-445f-abc6-097eeffa3ccc': ['A confirmar', 'Horário pontual', '', 'Nayara', '07:00 - 16:00'],
+    '042ca589-b3c5-4730-a085-501c999b4eaf': ['A confirmar', 'Horário pontual', '', 'Rafaela', '11:00 - 20:00']
+  };
+
+  const rows = sheet.getDataRange().getValues();
+  let atualizados = 0;
+  const naoEncontrados = [];
+  const idsUsados = {};
+
+  for (let i = 1; i < rows.length; i++) {
+    const id = String(rows[i][7] || '');
+    if (!id) continue;
+    const dado = MAPA[id];
+    if (!dado) { naoEncontrados.push(id); continue; }
+    idsUsados[id] = true;
+
+    const status = dado[0];
+    const tipo = dado[1];
+    const quemSai = dado[2];
+    const quemCobre = dado[3];
+    const horarioPara = dado[4];
+
+    sheet.getRange(i + 1, 3).setValue(status);
+    sheet.getRange(i + 1, 10, 1, 5).setValues([[tipo, quemSai, quemCobre, '', horarioPara]]);
+    atualizados++;
+  }
+
+  const idsNoMapaNaoAplicados = Object.keys(MAPA).filter(function(id) { return !idsUsados[id]; });
+
+  Logger.log(
+    'Migração de ajustes concluída!\n\n' +
+    'Linhas atualizadas: ' + atualizados + '\n' +
+    'Linhas na planilha sem correspondência no mapa: ' + naoEncontrados.length +
+    (naoEncontrados.length ? '\n(' + naoEncontrados.join(', ') + ')' : '') + '\n' +
+    'IDs do mapa que não foram encontrados na planilha: ' + idsNoMapaNaoAplicados.length +
+    (idsNoMapaNaoAplicados.length ? '\n(' + idsNoMapaNaoAplicados.join(', ') + ')' : '')
+  );
+}

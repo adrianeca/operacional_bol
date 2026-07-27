@@ -703,7 +703,7 @@ function saveEscalaSabado(token, e) {
 function getAjustesSheet_() {
   const sheet = getOpSS_().getSheetByName(ABA_AJUSTES_HORARIO);
   if (!sheet) throw new Error('Aba "' + ABA_AJUSTES_HORARIO + '" não encontrada.');
-  const header = sheet.getRange(1, 1, 1, 9).getValues()[0];
+  const header = sheet.getRange(1, 1, 1, 14).getValues()[0];
   if (!header[7]) {
     sheet.getRange(1, 8).setValue('ID');
     const last = sheet.getLastRow();
@@ -712,7 +712,12 @@ function getAjustesSheet_() {
       sheet.getRange(2, 8, ids.length, 1).setValues(ids.map(function(r) { return [r[0] || Utilities.getUuid()]; }));
     }
   }
-  if (!header[8]) sheet.getRange(1, 9).setValue('Tags');
+  if (!header[8])  sheet.getRange(1, 9).setValue('Tags');
+  if (!header[9])  sheet.getRange(1, 10).setValue('Tipo');
+  if (!header[10]) sheet.getRange(1, 11).setValue('Quem sai');
+  if (!header[11]) sheet.getRange(1, 12).setValue('Quem cobre');
+  if (!header[12]) sheet.getRange(1, 13).setValue('Horário de');
+  if (!header[13]) sheet.getRange(1, 14).setValue('Horário para');
   return sheet;
 }
 
@@ -725,7 +730,12 @@ function ajusteFromRow_(r) {
     mes: Number(r[3]), ano: Number(r[4]),
     registradoPor: String(r[5] || '').trim(),
     registradoEm: fmtDataHora_(r[6]),
-    tags: String(r[8] || '').trim()
+    tags: String(r[8] || '').trim(),
+    tipo: String(r[9] || '').trim(),
+    quemSai: String(r[10] || '').trim(),
+    quemCobre: String(r[11] || '').trim(),
+    horarioDe: String(r[12] || '').trim(),
+    horarioPara: String(r[13] || '').trim()
   };
 }
 
@@ -745,26 +755,32 @@ function saveAjusteHorario(token, a) {
   const user  = requireUser_(token);
   const sheet = getAjustesSheet_();
 
-  const atividade = String(a.atividade || '').trim();
   const dataStr = String(a.data || '').trim();
-  if (!atividade || !dataStr) throw new Error('Informe a atividade e a data.');
+  const quemSai = String(a.quemSai || '').trim();
+  const quemCobre = String(a.quemCobre || '').trim();
+  if (!dataStr) throw new Error('Informe a data.');
+  if (!quemSai && !quemCobre) throw new Error('Informe quem sai e/ou quem cobre.');
   const data = new Date(dataStr + 'T00:00:00');
+  const atividade = String(a.atividade || '').trim();
   const status = String(a.status || '').trim();
-  const tags = String(a.tags || '').trim();
+  const tipo = String(a.tipo || '').trim();
+  const horarioDe = String(a.horarioDe || '').trim();
+  const horarioPara = String(a.horarioPara || '').trim();
+  const tags = [quemSai, quemCobre].filter(function(x) { return x; }).join(' / ');
 
   if (a.id) {
     const rows = sheet.getDataRange().getValues();
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][7]) === String(a.id)) {
         sheet.getRange(i + 1, 1, 1, 5).setValues([[atividade, data, status, data.getMonth() + 1, data.getFullYear()]]);
-        sheet.getRange(i + 1, 9).setValue(tags);
+        sheet.getRange(i + 1, 9, 1, 6).setValues([[tags, tipo, quemSai, quemCobre, horarioDe, horarioPara]]);
         return getAjustesHorario(token);
       }
     }
     throw new Error('Ajuste não encontrado.');
   }
 
-  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(), tags]);
+  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(), tags, tipo, quemSai, quemCobre, horarioDe, horarioPara]);
   return getAjustesHorario(token);
 }
 

@@ -210,6 +210,7 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
 .status-pill.pendente  {background:var(--warning-100);color:#92400e}
 .status-pill.atencao   {background:var(--danger-100);color:var(--danger-600)}
 .status-pill.nao-aplica{background:var(--gray-100);color:var(--gray-500)}
+.status-pill.tipo-info  {background:var(--navy-100);color:var(--navy-600)}
 
 .filter-row {display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 .select-input, .text-input {
@@ -585,8 +586,15 @@ select.status-select {
         </div>
         <div class="filter-row">
           <input type="date" id="ajDataFilter" class="text-input" onchange="renderAjustes()">
-          <select id="ajTagFilter" class="select-input" onchange="renderAjustes()">
-            <option value="">Todas as tags</option>
+          <select id="ajTipoFilter" class="select-input" onchange="renderAjustes()">
+            <option value="">Todos os tipos</option>
+            <option value="Troca">Troca</option>
+            <option value="Cobertura">Cobertura</option>
+            <option value="Falta">Falta</option>
+            <option value="Horário pontual">Horário pontual</option>
+          </select>
+          <select id="ajPessoaFilter" class="select-input" onchange="renderAjustes()">
+            <option value="">Todas as pessoas</option>
           </select>
           <button class="btn-ghost btn-sm" onclick="limparFiltrosAjustes()">Limpar filtros</button>
         </div>
@@ -729,32 +737,49 @@ select.status-select {
 <div id="ajusteModal" class="modal-backdrop">
   <div class="modal-card modal-card-lg">
     <div class="modal-title" id="ajusteModalTitle">Ajuste de horário</div>
-    <label class="modal-label">Descrição / Atividade</label>
-    <input id="ajAtividade" class="modal-input" type="text" placeholder="Ex: Fulana trocou de horário com Ciclana">
     <div class="modal-row">
+      <div>
+        <label class="modal-label">Tipo</label>
+        <select id="ajTipo" class="modal-select">
+          <option value="Troca">Troca</option>
+          <option value="Cobertura">Cobertura</option>
+          <option value="Falta">Falta</option>
+          <option value="Horário pontual">Horário pontual</option>
+        </select>
+      </div>
       <div>
         <label class="modal-label">Data</label>
         <input id="ajData" class="modal-input" type="date">
       </div>
+    </div>
+    <div class="modal-row">
       <div>
-        <label class="modal-label">Status</label>
-        <select id="ajStatus" class="modal-select">
-          <option value="">—</option>
-          <option value="Feito">Feito</option>
-          <option value="Pendente">Pendente</option>
-          <option value="Atenção">Atenção</option>
-          <option value="Não se aplica">Não se aplica</option>
-        </select>
+        <label class="modal-label">Quem sai <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <input id="ajQuemSai" class="modal-input" type="text" list="ajPessoaList" placeholder="Quem tinha o horário original">
+      </div>
+      <div>
+        <label class="modal-label">Quem cobre <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <input id="ajQuemCobre" class="modal-input" type="text" list="ajPessoaList" placeholder="Quem assume/cobre">
       </div>
     </div>
-    <label class="modal-label">Tags (pessoas)</label>
-    <div class="tag-picker" id="ajTagsPicker">
-      <div class="tag-picker-chips" id="ajTagsChips"></div>
-      <input type="text" id="ajTagsInput" class="tag-picker-input" placeholder="Digite um nome ou selecione..."
-        oninput="renderAjTagsDropdown_()" onfocus="renderAjTagsDropdown_()"
-        onblur="hideAjTagsDropdownDelayed_()" onkeydown="onAjTagsKeydown_(event)">
-      <div class="tag-picker-dropdown" id="ajTagsDropdown"></div>
+    <datalist id="ajPessoaList"></datalist>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Horário de <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <input id="ajHorarioDe" class="modal-input" type="text" placeholder="09:00 - 18:00">
+      </div>
+      <div>
+        <label class="modal-label">Horário para <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <input id="ajHorarioPara" class="modal-input" type="text" placeholder="09:00 - 18:00">
+      </div>
     </div>
+    <label class="modal-label">Status</label>
+    <select id="ajStatus" class="modal-select">
+      <option value="A confirmar">A confirmar</option>
+      <option value="Confirmado">Confirmado</option>
+    </select>
+    <label class="modal-label">Observação <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+    <textarea id="ajAtividade" class="modal-textarea" placeholder="Detalhes extras, se precisar"></textarea>
     <div id="ajusteModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="ajDeleteBtn" style="display:none;color:#fff" onclick="excluirAjuste()">Excluir</button>
@@ -1703,55 +1728,75 @@ function renderSecretaria() {
 }
 
 function ajusteStatusPill_(status) {
-  var map = { 'Feito': 'no-prazo', 'Pendente': 'pendente', 'Atenção': 'atencao', 'Não se aplica': 'nao-aplica' };
+  var map = { 'Confirmado': 'no-prazo', 'Feito': 'no-prazo', 'A confirmar': 'pendente', 'Pendente': 'pendente', 'Atenção': 'atencao', 'Não se aplica': 'nao-aplica' };
   var cls = map[status] || 'vazio';
   return '<span class="status-pill ' + cls + '">' + esc(status || '—') + '</span>';
 }
 
+function ajusteTipoPill_(tipo) {
+  var map = { 'Troca': 'tipo-info', 'Cobertura': 'no-prazo', 'Falta': 'em-atraso', 'Horário pontual': 'pendente' };
+  var cls = map[tipo] || 'vazio';
+  return '<span class="status-pill ' + cls + '">' + esc(tipo || '—') + '</span>';
+}
+
 function renderAjustesFiltros_() {
-  var tagsSet = {};
+  var pessoasSet = {};
   state.secretaria.ajustes.forEach(function(a) {
-    splitResponsaveis_(a.tags).forEach(function(t) { tagsSet[t] = true; });
+    if (a.quemSai) pessoasSet[a.quemSai] = true;
+    if (a.quemCobre) pessoasSet[a.quemCobre] = true;
   });
-  var sel = document.getElementById('ajTagFilter');
+  var sel = document.getElementById('ajPessoaFilter');
   var atual = sel.value;
-  sel.innerHTML = '<option value="">Todas as tags</option>' +
-    Object.keys(tagsSet).sort().map(function(t) {
-      return '<option value="' + esc(t) + '"' + (t === atual ? ' selected' : '') + '>' + esc(t) + '</option>';
+  sel.innerHTML = '<option value="">Todas as pessoas</option>' +
+    Object.keys(pessoasSet).sort().map(function(p) {
+      return '<option value="' + esc(p) + '"' + (p === atual ? ' selected' : '') + '>' + esc(p) + '</option>';
     }).join('');
+
+  document.getElementById('ajPessoaList').innerHTML =
+    getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
 }
 
 function limparFiltrosAjustes() {
   document.getElementById('ajDataFilter').value = '';
-  document.getElementById('ajTagFilter').value = '';
+  document.getElementById('ajTipoFilter').value = '';
+  document.getElementById('ajPessoaFilter').value = '';
   renderAjustes();
 }
 
 function renderAjustes() {
   var dataFiltro = document.getElementById('ajDataFilter').value;
-  var tagFiltro = document.getElementById('ajTagFilter').value;
-  var temFiltro = !!(dataFiltro || tagFiltro);
+  var tipoFiltro = document.getElementById('ajTipoFilter').value;
+  var pessoaFiltro = document.getElementById('ajPessoaFilter').value;
+  var temFiltro = !!(dataFiltro || tipoFiltro || pessoaFiltro);
 
   var lista = state.secretaria.ajustes.filter(function(a) {
     if (dataFiltro && a.data !== dataFiltro) return false;
-    if (tagFiltro && splitResponsaveis_(a.tags).indexOf(tagFiltro) === -1) return false;
+    if (tipoFiltro && a.tipo !== tipoFiltro) return false;
+    if (pessoaFiltro && a.quemSai !== pessoaFiltro && a.quemCobre !== pessoaFiltro) return false;
     return true;
   });
   if (!temFiltro) lista = lista.slice(0, 60);
 
   var linhas = lista.map(function(a) {
-    var tagsHtml = splitResponsaveis_(a.tags).map(function(t) {
-      return '<span class="rot-tag" style="background:' + corPessoa_(t) + '">' + esc(t) + '</span>';
-    }).join('');
-    return '<tr><td>' + fmtDataBR(a.data) + '</td><td>' + esc(a.atividade) + '</td>' +
+    var envolvidos = [];
+    if (a.quemSai) envolvidos.push('<span class="rot-tag" style="background:' + corPessoa_(a.quemSai) + '">' + esc(a.quemSai) + '</span>');
+    if (a.quemCobre) envolvidos.push('<span class="rot-tag" style="background:' + corPessoa_(a.quemCobre) + '">' + esc(a.quemCobre) + '</span>');
+    var seta = '<span style="color:var(--gray-400);margin:0 2px">&rarr;</span>';
+    var horarioHtml = (a.horarioDe || a.horarioPara)
+      ? esc(a.horarioDe || '—') + ' ' + seta + ' ' + esc(a.horarioPara || '—')
+      : '<span style="color:var(--gray-400)">—</span>';
+    var tituloObs = a.atividade ? ' title="' + esc(a.atividade) + '"' : '';
+    return '<tr' + tituloObs + '><td>' + fmtDataBR(a.data) + '</td>' +
+      '<td>' + ajusteTipoPill_(a.tipo) + '</td>' +
+      '<td><div class="rot-tags">' + (envolvidos.length ? envolvidos.join(seta) : '—') + '</div></td>' +
+      '<td>' + horarioHtml + '</td>' +
       '<td>' + ajusteStatusPill_(a.status) + '</td>' +
-      '<td><div class="rot-tags">' + (tagsHtml || '—') + '</div></td>' +
       '<td><button class="rot-edit-btn" onclick="abrirAjusteModal(\'' + a.id + '\')" title="Editar">&#9998;</button></td></tr>';
   }).join('');
 
   document.getElementById('ajustesTable').innerHTML =
-    '<thead><tr><th>Data</th><th>Descrição</th><th>Status</th><th>Tags</th><th></th></tr></thead><tbody>' +
-    (linhas || '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum ajuste encontrado.</td></tr>') +
+    '<thead><tr><th>Data</th><th>Tipo</th><th>Envolvidos</th><th>Horário</th><th>Status</th><th></th></tr></thead><tbody>' +
+    (linhas || '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum ajuste encontrado.</td></tr>') +
     '</tbody>';
 }
 
@@ -1870,13 +1915,16 @@ function salvarEscalaModal() {
 
 // -- Ajuste de horário --
 var ajusteEditId = null;
-var ajTagsSelected_ = [];
 
 // Reúne todos os nomes já usados em qualquer lugar do app (tags de ajustes,
 // responsáveis de rotinas, pessoas da escala de sábado) pra sugerir no seletor.
 function getTodasTagsConhecidas_() {
   var set = {};
-  (state.secretaria.ajustes || []).forEach(function(a) { splitResponsaveis_(a.tags).forEach(function(t) { set[t] = true; }); });
+  (state.secretaria.ajustes || []).forEach(function(a) {
+    if (a.quemSai) set[a.quemSai] = true;
+    if (a.quemCobre) set[a.quemCobre] = true;
+    splitResponsaveis_(a.tags).forEach(function(t) { set[t] = true; });
+  });
   (state.rotinas || []).forEach(function(r) {
     splitResponsaveis_(r.responsavel).forEach(function(t) { if (t.toLowerCase() !== 'todas') set[t] = true; });
   });
@@ -1886,98 +1934,41 @@ function getTodasTagsConhecidas_() {
   return Object.keys(set).sort();
 }
 
-function renderAjTagsChips_() {
-  document.getElementById('ajTagsChips').innerHTML = ajTagsSelected_.map(function(t, i) {
-    return '<span class="tag-chip" style="background:' + corPessoa_(t) + '">' + esc(t) +
-      '<button type="button" class="tag-chip-remove" data-index="' + i + '" onmousedown="event.preventDefault();removeAjTagFromEl_(this)">&times;</button></span>';
-  }).join('');
-}
-
-function addAjTag_(nome) {
-  nome = String(nome || '').trim();
-  if (!nome) return;
-  var jaTem = ajTagsSelected_.some(function(t) { return t.toLowerCase() === nome.toLowerCase(); });
-  if (!jaTem) ajTagsSelected_.push(nome);
-  document.getElementById('ajTagsInput').value = '';
-  renderAjTagsChips_();
-  renderAjTagsDropdown_();
-  document.getElementById('ajTagsInput').focus();
-}
-
-function addAjTagFromEl_(el) { addAjTag_(el.getAttribute('data-nome')); }
-
-function removeAjTag_(index) {
-  ajTagsSelected_.splice(index, 1);
-  renderAjTagsChips_();
-}
-
-function removeAjTagFromEl_(el) { removeAjTag_(Number(el.getAttribute('data-index'))); }
-
-function renderAjTagsDropdown_() {
-  var dd = document.getElementById('ajTagsDropdown');
-  var texto = document.getElementById('ajTagsInput').value.trim();
-  var textoLower = texto.toLowerCase();
-  var conhecidas = getTodasTagsConhecidas_();
-
-  var opcoes = conhecidas.filter(function(t) {
-    if (ajTagsSelected_.some(function(s) { return s.toLowerCase() === t.toLowerCase(); })) return false;
-    return !textoLower || t.toLowerCase().indexOf(textoLower) !== -1;
-  });
-
-  var html = opcoes.map(function(t) {
-    return '<div class="tag-picker-option" data-nome="' + esc(t) + '" onmousedown="event.preventDefault();addAjTagFromEl_(this)">' +
-      '<span class="tag-picker-option-dot" style="background:' + corPessoa_(t) + '"></span>' + esc(t) + '</div>';
-  }).join('');
-
-  var existeExato = conhecidas.some(function(t) { return t.toLowerCase() === textoLower; });
-  if (texto && !existeExato) {
-    html += '<div class="tag-picker-option tag-picker-option-create" data-nome="' + esc(texto) + '" onmousedown="event.preventDefault();addAjTagFromEl_(this)">+ Criar tag "' + esc(texto) + '"</div>';
-  }
-  if (!html) html = '<div class="tag-picker-empty">Nenhuma tag encontrada.</div>';
-
-  dd.innerHTML = html;
-  dd.classList.add('open');
-}
-
-function hideAjTagsDropdownDelayed_() {
-  setTimeout(function() { document.getElementById('ajTagsDropdown').classList.remove('open'); }, 150);
-}
-
-function onAjTagsKeydown_(event) {
-  if (event.key === 'Enter' || event.key === ',') {
-    event.preventDefault();
-    addAjTag_(document.getElementById('ajTagsInput').value);
-  } else if (event.key === 'Backspace' && !document.getElementById('ajTagsInput').value && ajTagsSelected_.length) {
-    removeAjTag_(ajTagsSelected_.length - 1);
-  }
-}
-
 function abrirAjusteModal(id) {
   ajusteEditId = id || null;
   var a = id ? state.secretaria.ajustes.filter(function(x){ return x.id===id; })[0] : null;
   document.getElementById('ajusteModalTitle').textContent = a ? 'Editar ajuste' : 'Novo ajuste';
-  document.getElementById('ajAtividade').value = a ? a.atividade : '';
+  document.getElementById('ajTipo').value = a ? a.tipo : 'Troca';
   document.getElementById('ajData').value = a ? a.data : '';
-  document.getElementById('ajStatus').value = a ? a.status : '';
-  ajTagsSelected_ = a ? splitResponsaveis_(a.tags) : [];
-  document.getElementById('ajTagsInput').value = '';
-  document.getElementById('ajTagsDropdown').classList.remove('open');
-  renderAjTagsChips_();
+  document.getElementById('ajQuemSai').value = a ? a.quemSai : '';
+  document.getElementById('ajQuemCobre').value = a ? a.quemCobre : '';
+  document.getElementById('ajHorarioDe').value = a ? a.horarioDe : '';
+  document.getElementById('ajHorarioPara').value = a ? a.horarioPara : '';
+  document.getElementById('ajStatus').value = a ? a.status : 'A confirmar';
+  document.getElementById('ajAtividade').value = a ? a.atividade : '';
   document.getElementById('ajusteModalStatus').textContent = '';
   document.getElementById('ajDeleteBtn').style.display = a ? '' : 'none';
   document.getElementById('ajusteModal').classList.add('open');
 }
 
 function salvarAjusteModal() {
-  var atividade = document.getElementById('ajAtividade').value.trim();
   var data = document.getElementById('ajData').value;
+  var quemSai = document.getElementById('ajQuemSai').value.trim();
+  var quemCobre = document.getElementById('ajQuemCobre').value.trim();
   var status = document.getElementById('ajusteModalStatus');
-  if (!atividade || !data) { status.textContent = 'Informe a descrição e a data.'; status.className = 'modal-status error'; return; }
+  if (!data) { status.textContent = 'Informe a data.'; status.className = 'modal-status error'; return; }
+  if (!quemSai && !quemCobre) { status.textContent = 'Informe quem sai e/ou quem cobre.'; status.className = 'modal-status error'; return; }
 
   var payload = {
-    id: ajusteEditId, atividade: atividade, data: data,
+    id: ajusteEditId,
+    tipo: document.getElementById('ajTipo').value,
+    data: data,
+    quemSai: quemSai,
+    quemCobre: quemCobre,
+    horarioDe: document.getElementById('ajHorarioDe').value.trim(),
+    horarioPara: document.getElementById('ajHorarioPara').value.trim(),
     status: document.getElementById('ajStatus').value,
-    tags: ajTagsSelected_.join(' / ')
+    atividade: document.getElementById('ajAtividade').value.trim()
   };
 
   status.textContent = 'Salvando...'; status.className = 'modal-status';
