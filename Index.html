@@ -592,6 +592,14 @@ select.status-select {
         </div>
         <table class="data-table" id="ajustesTable"></table>
       </div>
+
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Horas extras</div>
+          <button class="btn btn-sm" onclick="abrirHoraExtraModal()">+ Nova hora extra</button>
+        </div>
+        <table class="data-table" id="horasExtrasTable"></table>
+      </div>
     </div>
 
   </div>
@@ -752,6 +760,41 @@ select.status-select {
       <button class="btn-ghost btn-danger" id="ajDeleteBtn" style="display:none;color:#fff" onclick="excluirAjuste()">Excluir</button>
       <button class="btn-ghost" onclick="fecharModal('ajusteModal')">Cancelar</button>
       <button class="btn" onclick="salvarAjusteModal()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Hora extra ── -->
+<div id="horaExtraModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="horaExtraModalTitle">Nova hora extra</div>
+    <label class="modal-label">Pessoa</label>
+    <input id="heNomePessoa" class="modal-input" type="text" list="heNomePessoaList">
+    <datalist id="heNomePessoaList"></datalist>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Horas a pagar</label>
+        <input id="heHoras" class="modal-input" type="number" step="0.5" min="0" placeholder="Ex: 3.5">
+      </div>
+      <div>
+        <label class="modal-label">Data de pagamento</label>
+        <input id="heDataPagamento" class="modal-input" type="date">
+      </div>
+    </div>
+    <label class="modal-label">Status</label>
+    <select id="heStatus" class="modal-select">
+      <option value="">—</option>
+      <option value="Pendente">Pendente</option>
+      <option value="Pago">Pago</option>
+      <option value="Atrasado">Atrasado</option>
+    </select>
+    <label class="modal-label">Observação (opcional)</label>
+    <textarea id="heObservacao" class="modal-textarea"></textarea>
+    <div id="horaExtraModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="heDeleteBtn" style="display:none;color:#fff" onclick="excluirHoraExtra()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('horaExtraModal')">Cancelar</button>
+      <button class="btn" onclick="salvarHoraExtraModal()">Salvar</button>
     </div>
   </div>
 </div>
@@ -1417,7 +1460,7 @@ function renderFeriasSub_() {
       } else {
         restanteHtml = '<span class="status-pill ' + (r.diasRestantes > 0 ? 'no-prazo' : 'vazio') + '">' + r.diasRestantes + ' dias</span>';
       }
-      return '<tr><td><span class="rot-tag" style="background:' + corPessoa_(r.nome) + '">' + esc(r.nome) + '</span></td>' +
+      return '<tr><td>' + esc(r.nome) + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
         '<td>' + ciclo + '</td>' +
         '<td class="num">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</td>' +
@@ -1429,7 +1472,7 @@ function renderFeriasSub_() {
   document.getElementById('feListaTable').innerHTML =
     '<thead><tr><th>Pessoa</th><th>Início</th><th>Fim</th><th class="num">Dias</th><th>Observação</th><th></th></tr></thead><tbody>' +
     (f.ferias.length ? f.ferias.map(function(x) {
-      return '<tr><td><span class="rot-tag" style="background:' + corPessoa_(x.pessoa) + '">' + esc(x.pessoa) + '</span></td>' +
+      return '<tr><td>' + esc(x.pessoa) + '</td>' +
         '<td>' + fmtDataBR(x.dataInicio) + '</td><td>' + fmtDataBR(x.dataFim) + '</td>' +
         '<td class="num">' + x.dias + '</td><td>' + esc(x.observacao || '—') + '</td>' +
         '<td><button class="rot-edit-btn" onclick="abrirFeriaModal(\'' + x.id + '\')" title="Editar">&#9998;</button></td></tr>';
@@ -1655,6 +1698,8 @@ function renderSecretaria() {
 
   renderAjustesFiltros_();
   renderAjustes();
+
+  renderHorasExtras();
 }
 
 function ajusteStatusPill_(status) {
@@ -1949,6 +1994,77 @@ function excluirAjuste() {
     .withSuccessHandler(function(list) { state.secretaria.ajustes = list; fecharModal('ajusteModal'); renderSecretaria(); showToast('Ajuste excluído.', 'success'); })
     .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
     .deleteAjusteHorario(TOKEN, ajusteEditId);
+}
+
+// -- Horas extras --
+var horaExtraEditId = null;
+
+function horaExtraStatusPill_(status) {
+  var map = { 'Pago': 'no-prazo', 'Pendente': 'pendente', 'Atrasado': 'em-atraso' };
+  var cls = map[status] || 'vazio';
+  return '<span class="status-pill ' + cls + '">' + esc(status || '—') + '</span>';
+}
+
+function renderHorasExtras() {
+  var lista = state.secretaria.horasExtras || [];
+  document.getElementById('horasExtrasTable').innerHTML =
+    '<thead><tr><th>Pessoa</th><th class="num">Horas</th><th>Data de pagamento</th><th>Status</th><th></th></tr></thead><tbody>' +
+    (lista.length ? lista.map(function(h) {
+      return '<tr><td>' + esc(h.pessoa) + '</td>' +
+        '<td class="num">' + h.horas + '</td>' +
+        '<td>' + (h.dataPagamento ? fmtDataBR(h.dataPagamento) : '—') + '</td>' +
+        '<td>' + horaExtraStatusPill_(h.status) + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirHoraExtraModal(\'' + h.id + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma hora extra registrada.</td></tr>') +
+    '</tbody>';
+
+  document.getElementById('heNomePessoaList').innerHTML =
+    getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
+}
+
+function abrirHoraExtraModal(id) {
+  horaExtraEditId = id || null;
+  var h = id ? (state.secretaria.horasExtras || []).filter(function(x){ return x.id===id; })[0] : null;
+  document.getElementById('horaExtraModalTitle').textContent = h ? 'Editar hora extra' : 'Nova hora extra';
+  document.getElementById('heNomePessoa').value = h ? h.pessoa : '';
+  document.getElementById('heHoras').value = h ? h.horas : '';
+  document.getElementById('heDataPagamento').value = h ? h.dataPagamento : '';
+  document.getElementById('heStatus').value = h ? h.status : '';
+  document.getElementById('heObservacao').value = h ? h.observacao : '';
+  document.getElementById('horaExtraModalStatus').textContent = '';
+  document.getElementById('heDeleteBtn').style.display = h ? '' : 'none';
+  document.getElementById('horaExtraModal').classList.add('open');
+}
+
+function salvarHoraExtraModal() {
+  var pessoa = document.getElementById('heNomePessoa').value.trim();
+  var horas = document.getElementById('heHoras').value;
+  var status = document.getElementById('horaExtraModalStatus');
+  if (!pessoa || !horas) { status.textContent = 'Informe a pessoa e a quantidade de horas.'; status.className = 'modal-status error'; return; }
+
+  var payload = {
+    id: horaExtraEditId,
+    pessoa: pessoa,
+    horas: Number(horas),
+    dataPagamento: document.getElementById('heDataPagamento').value,
+    status: document.getElementById('heStatus').value,
+    observacao: document.getElementById('heObservacao').value.trim()
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(list) { state.secretaria.horasExtras = list; fecharModal('horaExtraModal'); renderHorasExtras(); showToast('Hora extra salva!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
+    .saveHoraExtra(TOKEN, payload);
+}
+
+function excluirHoraExtra() {
+  if (!horaExtraEditId) return;
+  if (!window.confirm('Excluir este registro de hora extra?')) return;
+  google.script.run
+    .withSuccessHandler(function(list) { state.secretaria.horasExtras = list; fecharModal('horaExtraModal'); renderHorasExtras(); showToast('Registro excluído.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
+    .deleteHoraExtra(TOKEN, horaExtraEditId);
 }
 
 // Recarrega o dashboard depois de alterações no calendário/secretaria que o afetam

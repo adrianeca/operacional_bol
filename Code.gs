@@ -14,6 +14,7 @@ const ABA_ENTREGAS        = 'ENTREGAS';
 const ABA_HORARIOS        = 'HORARIOS';
 const ABA_ESCALA_SABADO   = 'ESCALA_SABADO';
 const ABA_AJUSTES_HORARIO = 'AJUSTES_HORARIO';
+const ABA_HORAS_EXTRAS    = 'HORAS_EXTRAS';
 const ABA_FERIAS          = 'FERIAS';
 const ABA_FUNCIONARIOS    = 'FUNCIONARIOS';
 const ABA_CHECKLIST_ADMISSAO = 'ADMISSAO_CHECKLIST';
@@ -140,7 +141,9 @@ function getDashboard(token) {
   const diaSemana = hoje.getDay(); // 0=domingo ... 6=sábado
 
   const horarios    = getHorarios(token).filter(function(h) { return h.ativo; });
-  const ajustesHoje  = getAjustesHorario(token).filter(function(a) { return a.data === hojeStr; });
+  const ajustesHoje  = getAjustesHorario(token).filter(function(a) {
+    return a.data === hojeStr && (!a.status || a.status === 'Pendente');
+  });
 
   let quemTrabalha = [];
   if (diaSemana === 6) {
@@ -756,12 +759,89 @@ function deleteAjusteHorario(token, id) {
   return getAjustesHorario(token);
 }
 
+function getHorasExtrasSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_HORAS_EXTRAS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_HORAS_EXTRAS);
+    sheet.appendRow(['Pessoa', 'Horas', 'Data_Pagamento', 'Status', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID']);
+  }
+  return sheet;
+}
+
+function horaExtraFromRow_(r) {
+  return {
+    id: String(r[7]),
+    pessoa: String(r[0] || '').trim(),
+    horas: Number(r[1]) || 0,
+    dataPagamento: fmtData_(r[2]),
+    status: String(r[3] || '').trim(),
+    observacao: String(r[4] || '').trim(),
+    criadoPor: String(r[5] || '').trim(),
+    criadoEm: fmtDataHora_(r[6])
+  };
+}
+
+function getHorasExtras(token) {
+  requireUser_(token);
+  const rows = getHorasExtrasSheet_().getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][0]) continue;
+    out.push(horaExtraFromRow_(rows[i]));
+  }
+  out.sort(function(a, b) { return (b.dataPagamento || '').localeCompare(a.dataPagamento || ''); });
+  return out;
+}
+
+function saveHoraExtra(token, h) {
+  const user  = requireUser_(token);
+  const sheet = getHorasExtrasSheet_();
+
+  const pessoa = String(h.pessoa || '').trim();
+  const horas  = Number(h.horas) || 0;
+  if (!pessoa) throw new Error('Informe a pessoa.');
+  if (!horas) throw new Error('Informe a quantidade de horas.');
+  const dataPagamentoStr = String(h.dataPagamento || '').trim();
+  const dataPagamento = dataPagamentoStr ? new Date(dataPagamentoStr + 'T00:00:00') : '';
+  const status = String(h.status || '').trim();
+  const observacao = String(h.observacao || '').trim();
+
+  if (h.id) {
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][7]) === String(h.id)) {
+        sheet.getRange(i + 1, 1, 1, 5).setValues([[pessoa, horas, dataPagamento, status, observacao]]);
+        return getHorasExtras(token);
+      }
+    }
+    throw new Error('Registro de hora extra não encontrado.');
+  }
+
+  sheet.appendRow([pessoa, horas, dataPagamento, status, observacao, user.email, new Date(), Utilities.getUuid()]);
+  return getHorasExtras(token);
+}
+
+function deleteHoraExtra(token, id) {
+  requireUser_(token);
+  const sheet = getHorasExtrasSheet_();
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][7]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  return getHorasExtras(token);
+}
+
 function getSecretaria(token) {
   requireUser_(token);
   return {
     horarios: getHorarios(token),
     escalaSabado: getEscalaSabado(token),
-    ajustes: getAjustesHorario(token)
+    ajustes: getAjustesHorario(token),
+    horasExtras: getHorasExtras(token)
   };
 }
 
