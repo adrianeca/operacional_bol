@@ -269,6 +269,72 @@ function montarCorpoEmail_(mesReferencia, prazoTexto, linkPlanilha, geral) {
   </div>`;
 }
 
+// ====== ENVIO AVULSO (para professores que ficaram de fora de um envio já feito) ======
+// Uso: preencha NOMES_PARA_ENVIO_AVULSO com os nomes exatamente como aparecem na coluna
+// "Professor" das abas CIAS/BOLSISTAS do mês, selecione a função "enviarLembreteAvulso"
+// no editor do Apps Script e clique em Executar. Só envia para quem está nessa lista
+// (e que ainda esteja pendente), não afeta quem já recebeu o lembrete normal.
+const NOMES_PARA_ENVIO_AVULSO = []; // ex: ['Fulano de Tal', 'Ciclana Silva', 'Beltrano Souza']
+
+function enviarLembreteAvulso() {
+  if (NOMES_PARA_ENVIO_AVULSO.length === 0) {
+    throw new Error('Preencha NOMES_PARA_ENVIO_AVULSO com os nomes antes de executar.');
+  }
+
+  const hoje = new Date();
+  const nomeCias = nomeAbaMesAtual_(PREFIXO_CIAS, hoje);
+  const nomeBolsistas = nomeAbaMesAtual_(PREFIXO_BOLSISTAS, hoje);
+  const abaCias = encontrarAba_(nomeCias);
+  const abaBolsistas = encontrarAba_(nomeBolsistas);
+
+  const pendentes = new Set([
+    ...getProfessoresPendentes_(abaCias),
+    ...getProfessoresPendentes_(abaBolsistas)
+  ]);
+
+  const mapaEmails = getMapaProfessores_();
+  const mesReferencia = `${capitalizar_(MESES[hoje.getMonth()])}/${hoje.getFullYear()}`;
+  const prazoTexto = ultimoDiaDoMesTexto_(hoje);
+  const linkPlanilha = SpreadsheetApp.getActive().getUrl();
+  const corpo = montarCorpoEmail_(mesReferencia, prazoTexto, linkPlanilha, false);
+  const assunto = `Lembrete: Conceitos de ${mesReferencia} ainda não preenchidos`;
+
+  const enviados = [];
+  const ignorados = [];
+
+  NOMES_PARA_ENVIO_AVULSO.forEach(nome => {
+    const nomeLimpo = String(nome || '').trim();
+    if (!nomeLimpo) return;
+    if (!pendentes.has(nomeLimpo)) {
+      ignorados.push(`${nomeLimpo} (não está pendente nas abas de ${mesReferencia})`);
+      return;
+    }
+    const email = mapaEmails[nomeLimpo];
+    if (!email) {
+      ignorados.push(`${nomeLimpo} (sem e-mail cadastrado na aba "${ABA_PROFESSORES}")`);
+      return;
+    }
+    MailApp.sendEmail({
+      to: email,
+      name: NOME_REMETENTE,
+      replyTo: EMAILS_DUVIDAS.join(', '),
+      subject: assunto,
+      htmlBody: corpo
+    });
+    enviados.push(`${nomeLimpo} <${email}>`);
+  });
+
+  Logger.log('Enviados: %s', enviados.join(', ') || '(nenhum)');
+  if (ignorados.length > 0) Logger.log('Ignorados: %s', ignorados.join(' | '));
+
+  MailApp.sendEmail({
+    to: ADMIN_EMAIL,
+    subject: '[Lembretes de Conceito] Resultado do envio avulso',
+    body: `Enviado com sucesso para:\n${enviados.join('\n') || '(nenhum)'}\n\n` +
+      (ignorados.length > 0 ? `Ignorados:\n${ignorados.join('\n')}` : 'Nenhum ignorado.')
+  });
+}
+
 // ====== SETUP (rodar manualmente uma única vez) ======
 function criarGatilhoDiario() {
   removerGatilhosExistentes_();
