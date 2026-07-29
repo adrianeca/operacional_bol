@@ -481,11 +481,25 @@ function deleteRotina(token, id) {
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][4]) === String(id)) {
-      sheet.getRange(i + 1, 4).setValue('NÃO');
+      sheet.deleteRow(i + 1);
       break;
     }
   }
   return getRotinas(token);
+}
+
+function deleteFuncionario(token, nome) {
+  requireUser_(token);
+  const sheet = getFuncionariosSheet_();
+  const rows  = sheet.getDataRange().getValues();
+  const nomeNorm = norm_(nome);
+  for (let i = 1; i < rows.length; i++) {
+    if (norm_(rows[i][0]) === nomeNorm) {
+      sheet.deleteRow(i + 1);
+      return;
+    }
+  }
+  throw new Error('Funcionário não encontrado: ' + nome);
 }
 
 // Seed único: importa as tarefas individuais da aba "Rotina/Feedback" (por

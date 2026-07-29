@@ -752,7 +752,7 @@ select.status-select {
     <input id="rotResponsavel" class="modal-input" type="text" placeholder="Todas">
     <div id="rotinaModalStatus" class="modal-status"></div>
     <div class="modal-actions">
-      <button class="btn-ghost btn-danger" id="rotDeleteBtn" style="display:none;color:#fff" onclick="excluirRotina()">Desativar</button>
+      <button class="btn-ghost btn-danger" id="rotDeleteBtn" style="display:none;color:#fff" onclick="excluirRotina()">Excluir</button>
       <button class="btn-ghost" onclick="fecharModal('rotinaModal')">Cancelar</button>
       <button class="btn" onclick="salvarRotina()">Salvar</button>
     </div>
@@ -981,6 +981,7 @@ select.status-select {
     </div>
     <div id="funcionarioModalStatus" class="modal-status"></div>
     <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="fnDeleteBtn" style="display:none;color:#fff" onclick="excluirFuncionario()">Excluir</button>
       <button class="btn-ghost" onclick="fecharModal('funcionarioModal')">Cancelar</button>
       <button class="btn" onclick="salvarFuncionario()">Salvar</button>
     </div>
@@ -1503,7 +1504,7 @@ function salvarRotina() {
 
 function excluirRotina() {
   if (!rotinaEditId) return;
-  if (!window.confirm('Desativar esta rotina? Ela some da lista, mas o histórico é mantido.')) return;
+  if (!window.confirm('Excluir esta rotina? Esta ação não pode ser desfeita.')) return;
   google.script.run
     .withSuccessHandler(function(list) { state.rotinas = list; fecharModal('rotinaModal'); renderRotinas(); showToast('Rotina desativada.', 'success'); })
     .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
@@ -1936,7 +1937,17 @@ function abrirFuncionarioModal(nome) {
     sel.value = '';
   }
 
+  document.getElementById('fnDeleteBtn').style.display = nome ? '' : 'none';
   document.getElementById('funcionarioModal').classList.add('open');
+}
+
+function excluirFuncionario() {
+  if (!funcionarioEditNomeOriginal) return;
+  if (!window.confirm('Excluir "' + funcionarioEditNomeOriginal + '"? Esta ação remove o registro e não pode ser desfeita.')) return;
+  google.script.run
+    .withSuccessHandler(function() { recarregarFerias_(function() { fecharModal('funcionarioModal'); showToast('Funcionário excluído.', 'success'); }); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .deleteFuncionario(TOKEN, funcionarioEditNomeOriginal);
 }
 
 function onFnRHSelectChange_() {
