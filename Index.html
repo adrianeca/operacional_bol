@@ -1625,13 +1625,34 @@ function abrirSidebarFerias_(nome) {
     var restante = r.diasRestantes === null
       ? (r.dataAdmissao ? 'Ciclo ainda não completo' : 'Sem data de admissão')
       : r.diasRestantes + ' dias';
+    var customBadge = r.cicloCustomizado
+      ? ' <span style="font-size:.65rem;font-weight:700;background:var(--warning-100);color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;vertical-align:middle">personalizado</span>'
+      : '';
+    var restaurarBtn = r.cicloCustomizado
+      ? '<button class="btn-ghost btn-sm" onclick="limparCicloOverride_()" style="margin-right:auto;color:var(--danger-600);font-size:.75rem">Restaurar automático</button>'
+      : '';
     cicloHtml =
       '<div class="ferias-sidebar-section">' +
-        '<div class="ferias-sidebar-section-title">Ciclo atual</div>' +
-        '<div class="ferias-ciclo-card">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+          '<div class="ferias-sidebar-section-title" style="margin:0">Ciclo atual' + customBadge + '</div>' +
+          '<button class="rot-edit-btn" onclick="toggleCicloEdit_(true)" title="Editar ciclo">&#9998;</button>' +
+        '</div>' +
+        '<div id="cicloViewCard" class="ferias-ciclo-card">' +
           '<div class="ferias-ciclo-full"><div class="ferias-ciclo-label">Período</div><div class="ferias-ciclo-value">' + ciclo + '</div></div>' +
           '<div><div class="ferias-ciclo-label">Dias tirados</div><div class="ferias-ciclo-value">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</div></div>' +
           '<div><div class="ferias-ciclo-label">Dias restantes</div><div class="ferias-ciclo-value">' + restante + '</div></div>' +
+        '</div>' +
+        '<div id="cicloEditForm" style="display:none;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px">' +
+          '<div style="font-size:.75rem;color:var(--gray-500);margin-bottom:10px">Defina um ciclo personalizado. Deixe em branco para restaurar o cálculo automático pela data de admissão.</div>' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
+            '<div><div class="ferias-ciclo-label">Início do ciclo</div><input id="cicloInicioInput" type="date" class="modal-input" value="' + (r.cicloInicioOverride || '') + '"></div>' +
+            '<div><div class="ferias-ciclo-label">Fim do ciclo</div><input id="cicloFimInput" type="date" class="modal-input" value="' + (r.cicloFimOverride || '') + '"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">' +
+            restaurarBtn +
+            '<button class="btn-ghost btn-sm" onclick="toggleCicloEdit_(false)">Cancelar</button>' +
+            '<button class="btn btn-sm" onclick="salvarCicloOverride_()">Salvar</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
   }
@@ -1659,6 +1680,28 @@ function abrirSidebarFerias_(nome) {
 function fecharSidebarFerias_() {
   document.getElementById('feriasSidebarBackdrop').classList.remove('open');
   document.getElementById('feriasSidebar').classList.remove('open');
+}
+
+function toggleCicloEdit_(show) {
+  document.getElementById('cicloViewCard').style.display = show ? 'none' : '';
+  document.getElementById('cicloEditForm').style.display = show ? '' : 'none';
+}
+
+function salvarCicloOverride_() {
+  var ini = document.getElementById('cicloInicioInput').value;
+  var fim = document.getElementById('cicloFimInput').value;
+  if ((ini && !fim) || (!ini && fim)) { showToast('Informe início e fim, ou deixe ambos em branco.', 'error'); return; }
+  if (ini && fim && fim < ini) { showToast('O fim não pode ser antes do início.', 'error'); return; }
+  google.script.run
+    .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); showToast('Ciclo salvo!', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .saveCicloOverride(TOKEN, window._feriasSidebarNome, ini, fim);
+}
+
+function limparCicloOverride_() {
+  document.getElementById('cicloInicioInput').value = '';
+  document.getElementById('cicloFimInput').value = '';
+  salvarCicloOverride_();
 }
 
 function novoFeriaSidebarPessoa_() {

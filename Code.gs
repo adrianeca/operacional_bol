@@ -914,7 +914,7 @@ function getFuncionariosSheet_() {
   let sheet = ss.getSheetByName(ABA_FUNCIONARIOS);
   if (!sheet) {
     sheet = ss.insertSheet(ABA_FUNCIONARIOS);
-    sheet.appendRow(['Nome', 'Data_Admissao', 'Data_Demissao', 'Funcao', 'Apelido', 'ID']);
+    sheet.appendRow(['Nome', 'Data_Admissao', 'Data_Demissao', 'Funcao', 'Apelido', 'ID', 'Ciclo_Inicio_Override', 'Ciclo_Fim_Override']);
   }
   return sheet;
 }
@@ -928,7 +928,9 @@ function funcionarioFromRow_(r) {
     funcao: String(r[3] || '').trim(),
     apelido: String(r[4] || '').trim(),
     ativo: !dataDemissao,
-    id: String(r[5])
+    id: String(r[5]),
+    cicloInicioOverride: fmtData_(r[6]),
+    cicloFimOverride: fmtData_(r[7])
   };
 }
 
@@ -965,6 +967,22 @@ function saveFuncionario(token, f) {
   }
   sheet.appendRow([nome, dataAdmissao, dataDemissao, funcao, apelido, Utilities.getUuid()]);
   return getFuncionarios(token);
+}
+
+function saveCicloOverride(token, nome, cicloInicio, cicloFim) {
+  requireUser_(token);
+  const sheet = getFuncionariosSheet_();
+  const rows = sheet.getDataRange().getValues();
+  const nomeNorm = norm_(nome);
+  for (let i = 1; i < rows.length; i++) {
+    if (norm_(rows[i][0]) === nomeNorm) {
+      const ini = cicloInicio ? new Date(cicloInicio + 'T00:00:00') : '';
+      const fim = cicloFim   ? new Date(cicloFim   + 'T00:00:00') : '';
+      sheet.getRange(i + 1, 7, 1, 2).setValues([[ini, fim]]);
+      return getFeriasPagina(token);
+    }
+  }
+  throw new Error('Funcionário não encontrado: ' + nome);
 }
 
 function getFeriasSheet_() {
@@ -1091,16 +1109,19 @@ function getFeriasResumo(token) {
 
   const pessoas = {};
   funcionarios.forEach(function(f) {
-    pessoas[norm_(f.nome)] = { nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, funcao: f.funcao, apelido: f.apelido };
+    pessoas[norm_(f.nome)] = { nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, funcao: f.funcao, apelido: f.apelido, cicloInicioOverride: f.cicloInicioOverride || '', cicloFimOverride: f.cicloFimOverride || '' };
   });
   ferias.forEach(function(f) {
     const k = norm_(f.pessoa);
-    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '' };
+    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '', cicloInicioOverride: '', cicloFimOverride: '' };
   });
 
   return Object.keys(pessoas).map(function(k) {
     const p = pessoas[k];
-    const ciclo = cicloFeriasAtual_(p.dataAdmissao, hojeIso);
+    const temOverride = p.cicloInicioOverride && p.cicloFimOverride;
+    const ciclo = temOverride
+      ? { inicio: p.cicloInicioOverride, fim: p.cicloFimOverride }
+      : cicloFeriasAtual_(p.dataAdmissao, hojeIso);
     let diasTirados = 0;
     if (ciclo) {
       ferias.filter(function(f) {
@@ -1116,7 +1137,10 @@ function getFeriasResumo(token) {
       cicloInicio: ciclo ? ciclo.inicio : '',
       cicloFim: ciclo ? ciclo.fim : '',
       diasTirados: ciclo ? diasTirados : null,
-      diasRestantes: ciclo ? Math.max(0, 30 - diasTirados) : null
+      diasRestantes: ciclo ? Math.max(0, 30 - diasTirados) : null,
+      cicloCustomizado: !!temOverride,
+      cicloInicioOverride: p.cicloInicioOverride || '',
+      cicloFimOverride: p.cicloFimOverride || ''
     };
   }).sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
 }
