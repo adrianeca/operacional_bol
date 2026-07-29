@@ -369,6 +369,72 @@ select.status-select {
   .app-header{padding:12px 16px}
   .app-body{padding:16px}
 }
+
+/* ── Sidebar de Férias ── */
+.ferias-sidebar-backdrop {
+  position:fixed;inset:0;z-index:3000;display:none;
+}
+.ferias-sidebar-backdrop.open {display:block}
+.ferias-sidebar {
+  position:fixed;top:0;right:0;bottom:0;z-index:3001;
+  width:440px;max-width:100vw;
+  background:var(--white);
+  box-shadow:-4px 0 32px rgba(10,22,40,.18);
+  transform:translateX(100%);
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.ferias-sidebar.open {transform:translateX(0)}
+.ferias-sidebar-header {
+  display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding:22px 24px 18px;
+  border-bottom:1px solid rgba(255,255,255,.1);
+  background:var(--navy-900);
+  flex-shrink:0;
+}
+.ferias-sidebar-nome {font-size:1.05rem;font-weight:700;color:var(--white)}
+.ferias-sidebar-sub {font-size:.8rem;color:var(--navy-200);margin-top:4px}
+.ferias-sidebar-close {
+  background:rgba(255,255,255,.1);border:none;cursor:pointer;
+  color:var(--white);border-radius:6px;
+  width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  font-size:1rem;flex-shrink:0;transition:background .15s;
+}
+.ferias-sidebar-close:hover {background:rgba(255,255,255,.22)}
+.ferias-sidebar-body {flex:1;overflow-y:auto;padding:20px 24px}
+.ferias-sidebar-section {margin-bottom:24px}
+.ferias-sidebar-section-title {
+  font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--gray-400);margin-bottom:10px;
+}
+.ferias-ciclo-card {
+  background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;
+  padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px;
+}
+.ferias-ciclo-label {font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:3px}
+.ferias-ciclo-value {font-size:.88rem;font-weight:600;color:var(--navy-800)}
+.ferias-ciclo-full {grid-column:1/-1}
+.ferias-periodo-item {
+  display:flex;align-items:center;gap:12px;
+  padding:11px 0;border-bottom:1px solid var(--gray-100);
+}
+.ferias-periodo-item:last-child {border-bottom:none}
+.ferias-periodo-dates {flex:1}
+.ferias-periodo-range {font-size:.88rem;font-weight:600;color:var(--navy-800)}
+.ferias-periodo-obs {font-size:.78rem;color:var(--gray-500);margin-top:2px}
+.ferias-periodo-dias {
+  font-size:.82rem;font-weight:700;color:var(--navy-600);
+  background:var(--navy-50);border-radius:6px;padding:4px 8px;white-space:nowrap;
+}
+.ferias-sidebar-footer {
+  padding:16px 24px;border-top:1px solid var(--gray-200);flex-shrink:0;
+}
+.nome-link {
+  cursor:pointer;color:var(--navy-600);font-weight:600;
+  text-decoration:underline;text-decoration-color:transparent;
+  transition:text-decoration-color .15s,color .15s;
+}
+.nome-link:hover {color:var(--navy-400);text-decoration-color:var(--navy-300)}
 </style>
 </head>
 <body>
@@ -520,16 +586,14 @@ select.status-select {
 
       <div id="funcSubFerias" class="sub-tab-panel active">
         <div class="card">
-          <div class="card-title">Saldo de férias</div>
-          <div class="card-sub">Ciclo de 12 meses contado a partir da data de admissão · 30 dias liberados por ciclo concluído</div>
-          <table class="data-table" id="feResumoTable"></table>
-        </div>
-        <div class="card">
           <div class="section-head">
-            <div class="card-title" style="margin-bottom:0">Períodos de férias</div>
+            <div>
+              <div class="card-title" style="margin-bottom:2px">Saldo de férias</div>
+              <div class="card-sub" style="margin:0">Ciclo de 12 meses · 30 dias por ciclo concluído · clique no nome para ver o histórico</div>
+            </div>
             <button class="btn" onclick="abrirFeriaModal()">+ Novo período</button>
           </div>
-          <table class="data-table" id="feListaTable"></table>
+          <table class="data-table" id="feResumoTable"></table>
         </div>
       </div>
 
@@ -539,14 +603,18 @@ select.status-select {
             <div class="card-title" style="margin-bottom:0">Funcionários ativos</div>
             <button class="btn" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
           </div>
-          <table class="data-table" id="admissaoTable"></table>
+          <div class="entregas-wrap">
+            <table class="data-table" id="admissaoTable"></table>
+          </div>
         </div>
       </div>
 
       <div id="funcSubDemissao" class="sub-tab-panel">
         <div class="card">
           <div class="card-title">Funcionários desligados</div>
-          <table class="data-table" id="demissaoTable"></table>
+          <div class="entregas-wrap">
+            <table class="data-table" id="demissaoTable"></table>
+          </div>
         </div>
       </div>
     </div>
@@ -821,6 +889,22 @@ select.status-select {
       <button class="btn-ghost" onclick="fecharModal('horaExtraModal')">Cancelar</button>
       <button class="btn" onclick="salvarHoraExtraModal()">Salvar</button>
     </div>
+  </div>
+</div>
+
+<!-- ── Sidebar: Detalhe de férias ── -->
+<div id="feriasSidebarBackdrop" class="ferias-sidebar-backdrop" onclick="fecharSidebarFerias_()"></div>
+<div id="feriasSidebar" class="ferias-sidebar">
+  <div class="ferias-sidebar-header">
+    <div>
+      <div class="ferias-sidebar-nome" id="feriasSidebarNome"></div>
+      <div class="ferias-sidebar-sub" id="feriasSidebarSub"></div>
+    </div>
+    <button class="ferias-sidebar-close" onclick="fecharSidebarFerias_()">✕</button>
+  </div>
+  <div class="ferias-sidebar-body" id="feriasSidebarBody"></div>
+  <div class="ferias-sidebar-footer">
+    <button class="btn" style="width:100%" id="feriasSidebarNovoBtn" onclick="novoFeriaSidebarPessoa_()">+ Novo período</button>
   </div>
 </div>
 
@@ -1470,59 +1554,159 @@ function renderFuncionariosPagina() {
   renderDemissaoSub_();
 }
 
+var FERIAS_EXCLUIDOS_ = ['Fairuzz', 'Lucas Ventura', 'Taiza Aguiar'];
+
 function renderFeriasSub_() {
   var f = state.ferias;
-  // Só mostra quem está ativo — gente desligada não tem ciclo de férias em aberto.
-  var ativos = f.resumo.filter(function(r) { return !r.dataDemissao; });
+  var ativos = f.resumo.filter(function(r) {
+    return !r.dataDemissao && !FERIAS_EXCLUIDOS_.some(function(ex) { return r.nome === ex || r.nome.indexOf(ex + ' ') === 0; });
+  });
 
   document.getElementById('feResumoTable').innerHTML =
-    '<thead><tr><th>Pessoa</th><th>Data de admissão</th><th>Ciclo atual</th><th class="num">Dias tirados</th><th class="num">Dias restantes</th><th></th></tr></thead><tbody>' +
+    '<thead><tr><th>Pessoa</th><th>Função</th><th>Admissão</th><th>Ciclo atual</th><th class="num">Tirados</th><th class="num">Restantes</th><th></th></tr></thead><tbody>' +
     (ativos.length ? ativos.map(function(r) {
-      var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' a ' + fmtDataBR(r.cicloFim)) : '—';
+      var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' – ' + fmtDataBR(r.cicloFim)) : '—';
       var restanteHtml;
       if (r.diasRestantes === null) {
-        restanteHtml = '<span class="status-pill vazio">' + (r.dataAdmissao ? 'ciclo ainda não completo' : 'sem data de admissão') + '</span>';
+        restanteHtml = '<span class="status-pill vazio">' + (r.dataAdmissao ? 'ciclo incompleto' : 'sem admissão') + '</span>';
       } else {
         restanteHtml = '<span class="status-pill ' + (r.diasRestantes > 0 ? 'no-prazo' : 'vazio') + '">' + r.diasRestantes + ' dias</span>';
       }
-      return '<tr><td>' + esc(r.nome) + '</td>' +
+      return '<tr>' +
+        '<td><span class="nome-link" onclick="abrirSidebarFerias_(\'' + esc(r.nome) + '\')">' + esc(r.nome) + '</span></td>' +
+        '<td>' + esc(r.funcao || '—') + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
         '<td>' + ciclo + '</td>' +
         '<td class="num">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</td>' +
         '<td class="num">' + restanteHtml + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="editarFuncionarioDeFerias_(\'' + esc(r.nome) + '\',' + (r.dataDemissao ? 'true' : 'false') + ')" title="Editar data de admissão">&#9998;</button></td></tr>';
-    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
-    '</tbody>';
-
-  document.getElementById('feListaTable').innerHTML =
-    '<thead><tr><th>Pessoa</th><th>Início</th><th>Fim</th><th class="num">Dias</th><th>Observação</th><th></th></tr></thead><tbody>' +
-    (f.ferias.length ? f.ferias.map(function(x) {
-      return '<tr><td>' + esc(x.pessoa) + '</td>' +
-        '<td>' + fmtDataBR(x.dataInicio) + '</td><td>' + fmtDataBR(x.dataFim) + '</td>' +
-        '<td class="num">' + x.dias + '</td><td>' + esc(x.observacao || '—') + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirFeriaModal(\'' + x.id + '\')" title="Editar">&#9998;</button></td></tr>';
-    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum período registrado.</td></tr>') +
+        '<td><button class="rot-edit-btn" onclick="editarFuncionarioDeFerias_(\'' + esc(r.nome) + '\',' + (r.dataDemissao ? 'true' : 'false') + ')" title="Editar funcionário">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
     '</tbody>';
 
   document.getElementById('fePessoaList').innerHTML =
     pessoasConhecidasFerias_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
+
+  // Se sidebar estava aberta, atualiza o conteúdo
+  if (document.getElementById('feriasSidebar').classList.contains('open') && window._feriasSidebarNome) {
+    abrirSidebarFerias_(window._feriasSidebarNome);
+  }
+}
+
+var _feriasSidebarNome = null;
+
+function abrirSidebarFerias_(nome) {
+  window._feriasSidebarNome = nome;
+  var f = state.ferias;
+  var r = (f.resumo || []).filter(function(x){ return x.nome === nome; })[0];
+  var periodos = (f.ferias || []).filter(function(x){ return x.pessoa === nome; });
+  periodos.sort(function(a,b){ return b.dataInicio > a.dataInicio ? 1 : -1; });
+
+  document.getElementById('feriasSidebarNome').textContent = nome;
+  var sub = [];
+  if (r && r.funcao) sub.push(r.funcao);
+  if (r && r.dataAdmissao) sub.push('Admissão: ' + fmtDataBR(r.dataAdmissao));
+  document.getElementById('feriasSidebarSub').textContent = sub.join(' · ');
+
+  var cicloHtml = '';
+  if (r) {
+    var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' – ' + fmtDataBR(r.cicloFim)) : '—';
+    var restante = r.diasRestantes === null
+      ? (r.dataAdmissao ? 'Ciclo ainda não completo' : 'Sem data de admissão')
+      : r.diasRestantes + ' dias';
+    cicloHtml =
+      '<div class="ferias-sidebar-section">' +
+        '<div class="ferias-sidebar-section-title">Ciclo atual</div>' +
+        '<div class="ferias-ciclo-card">' +
+          '<div class="ferias-ciclo-full"><div class="ferias-ciclo-label">Período</div><div class="ferias-ciclo-value">' + ciclo + '</div></div>' +
+          '<div><div class="ferias-ciclo-label">Dias tirados</div><div class="ferias-ciclo-value">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</div></div>' +
+          '<div><div class="ferias-ciclo-label">Dias restantes</div><div class="ferias-ciclo-value">' + restante + '</div></div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  var periodosHtml =
+    '<div class="ferias-sidebar-section">' +
+      '<div class="ferias-sidebar-section-title">Histórico de períodos (' + periodos.length + ')</div>' +
+      (periodos.length ? periodos.map(function(x) {
+        return '<div class="ferias-periodo-item">' +
+          '<div class="ferias-periodo-dates">' +
+            '<div class="ferias-periodo-range">' + fmtDataBR(x.dataInicio) + ' → ' + fmtDataBR(x.dataFim) + '</div>' +
+            (x.observacao ? '<div class="ferias-periodo-obs">' + esc(x.observacao) + '</div>' : '') +
+          '</div>' +
+          '<div class="ferias-periodo-dias">' + x.dias + ' dias</div>' +
+          '<button class="rot-edit-btn" onclick="abrirFeriaModal(\'' + x.id + '\')" title="Editar">&#9998;</button>' +
+        '</div>';
+      }).join('') : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período registrado ainda.</div>') +
+    '</div>';
+
+  document.getElementById('feriasSidebarBody').innerHTML = cicloHtml + periodosHtml;
+  document.getElementById('feriasSidebarBackdrop').classList.add('open');
+  document.getElementById('feriasSidebar').classList.add('open');
+}
+
+function fecharSidebarFerias_() {
+  document.getElementById('feriasSidebarBackdrop').classList.remove('open');
+  document.getElementById('feriasSidebar').classList.remove('open');
+}
+
+function novoFeriaSidebarPessoa_() {
+  abrirFeriaModal();
+  setTimeout(function() {
+    if (window._feriasSidebarNome) {
+      document.getElementById('fePessoa').value = window._feriasSidebarNome;
+    }
+  }, 30);
+}
+
+var ADMISSAO_EXCLUIDOS_ = ['Aline','Bruna','Elaine','Germana','Mel','Natasha','Nayara','Rafaela','Rosana'];
+
+function checklistCellStyle_(status) {
+  if (status === 'Feito') return 'background:var(--success-100);color:var(--success-600);border-color:#bbf7d0';
+  if (status === 'Não se aplica') return 'background:var(--gray-100);color:var(--gray-500);border-color:var(--gray-200)';
+  if (status === 'Pendente') return 'background:var(--warning-100);color:#92400e;border-color:#fde68a';
+  return 'background:var(--white);color:var(--gray-500);border-color:var(--gray-200)';
+}
+
+function onChecklistCellChange_(selectEl, nome, processo, item) {
+  var status = selectEl.value;
+  selectEl.setAttribute('style', checklistCellStyle_(status));
+  google.script.run
+    .withSuccessHandler(function(checklist) { state.ferias.checklist = checklist; })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderAdmissaoSub_(); renderDemissaoSub_(); })
+    .saveChecklistItem(TOKEN, nome, processo, item, status);
+}
+
+function checklistCellsHtml_(nome, processo, itens) {
+  return itens.map(function(item) {
+    var status = checklistStatusPara_(nome, processo, item);
+    return '<td class="num"><select class="status-select" style="' + checklistCellStyle_(status) + ';min-width:90px" ' +
+      'onchange="onChecklistCellChange_(this,\'' + esc(nome) + '\',\'' + processo + '\',\'' + esc(item) + '\')">' +
+      '<option value=""' + (status === '' ? ' selected' : '') + '>—</option>' +
+      '<option value="Feito"' + (status === 'Feito' ? ' selected' : '') + '>Feito</option>' +
+      '<option value="Pendente"' + (status === 'Pendente' ? ' selected' : '') + '>Pendente</option>' +
+      '<option value="Não se aplica"' + (status === 'Não se aplica' ? ' selected' : '') + '>Não se aplica</option>' +
+      '</select></td>';
+  }).join('');
 }
 
 function renderAdmissaoSub_() {
-  var ativos = state.ferias.resumo.filter(function(r) { return !r.dataDemissao; });
-  var totalItens = state.ferias.checklist.itens.length;
-  document.getElementById('admissaoTable').innerHTML =
-    '<thead><tr><th>Nome</th><th>Apelido</th><th>Função</th><th>Data de admissão</th><th>Checklist</th><th></th></tr></thead><tbody>' +
-    (ativos.length ? ativos.map(function(r) {
-      var feitos = checklistFeitos_(r.nome, 'ADMISSAO');
-      return '<tr><td>' + esc(r.nome) + '</td>' +
-        '<td>' + esc(r.apelido || '—') + '</td>' +
-        '<td>' + esc(r.funcao || '—') + '</td>' +
-        '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
-        '<td><button class="btn-ghost btn-sm" onclick="abrirChecklistModal(\'' + esc(r.nome) + '\',\'ADMISSAO\')">' + feitos + '/' + totalItens + ' feitos</button></td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
-    }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
-    '</tbody>';
+  var itens = state.ferias.checklist.itens;
+  var ativos = state.ferias.resumo.filter(function(r) {
+    return !r.dataDemissao && ADMISSAO_EXCLUIDOS_.indexOf(r.nome.split(' ')[0]) === -1;
+  });
+  var cols = 3 + itens.length + 1;
+  var thead = '<thead><tr><th>Nome</th><th>Função</th><th>Admissão</th>' +
+    itens.map(function(it) {
+      return '<th class="num" style="min-width:90px;font-size:.7rem" title="' + esc(it) + '">' + esc(it) + '</th>';
+    }).join('') + '<th></th></tr></thead>';
+  var tbody = '<tbody>' + (ativos.length ? ativos.map(function(r) {
+    return '<tr><td>' + esc(r.nome) + '</td>' +
+      '<td>' + esc(r.funcao || '—') + '</td>' +
+      '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
+      checklistCellsHtml_(r.nome, 'ADMISSAO', itens) +
+      '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+  }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada.</td></tr>') + '</tbody>';
+  document.getElementById('admissaoTable').innerHTML = thead + tbody;
 }
 
 function checklistStatusPara_(nome, processo, item) {
@@ -1578,21 +1762,22 @@ function onChecklistItemChange_(selectEl) {
 }
 
 function renderDemissaoSub_() {
+  var itens = state.ferias.checklist.itens;
   var desligados = state.ferias.resumo.filter(function(r) { return r.dataDemissao; });
-  var totalItens = state.ferias.checklist.itens.length;
-  document.getElementById('demissaoTable').innerHTML =
-    '<thead><tr><th>Nome</th><th>Apelido</th><th>Função</th><th>Data de admissão</th><th>Data de demissão</th><th>Checklist</th><th></th></tr></thead><tbody>' +
-    (desligados.length ? desligados.map(function(r) {
-      var feitos = checklistFeitos_(r.nome, 'DEMISSAO');
-      return '<tr><td>' + esc(r.nome) + '</td>' +
-        '<td>' + esc(r.apelido || '—') + '</td>' +
-        '<td>' + esc(r.funcao || '—') + '</td>' +
-        '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
-        '<td>' + fmtDataBR(r.dataDemissao) + '</td>' +
-        '<td><button class="btn-ghost btn-sm" onclick="abrirChecklistModal(\'' + esc(r.nome) + '\',\'DEMISSAO\')">' + feitos + '/' + totalItens + ' feitos</button></td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
-    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum desligamento registrado.</td></tr>') +
-    '</tbody>';
+  var cols = 4 + itens.length + 1;
+  var thead = '<thead><tr><th>Nome</th><th>Função</th><th>Admissão</th><th>Demissão</th>' +
+    itens.map(function(it) {
+      return '<th class="num" style="min-width:90px;font-size:.7rem" title="' + esc(it) + '">' + esc(it) + '</th>';
+    }).join('') + '<th></th></tr></thead>';
+  var tbody = '<tbody>' + (desligados.length ? desligados.map(function(r) {
+    return '<tr><td>' + esc(r.nome) + '</td>' +
+      '<td>' + esc(r.funcao || '—') + '</td>' +
+      '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
+      '<td>' + fmtDataBR(r.dataDemissao) + '</td>' +
+      checklistCellsHtml_(r.nome, 'DEMISSAO', itens) +
+      '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+  }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum desligamento registrado.</td></tr>') + '</tbody>';
+  document.getElementById('demissaoTable').innerHTML = thead + tbody;
 }
 
 function pessoasConhecidasFerias_() {
