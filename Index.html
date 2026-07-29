@@ -226,6 +226,8 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
   font-size:.85rem;font-weight:700;cursor:pointer;transition:background .15s;
 }
 .btn:hover {background:var(--navy-600)}
+.btn-secondary {background:var(--navy-500)}
+.btn-secondary:hover {background:var(--navy-400)}
 .btn-ghost {
   background:none;border:1.5px solid var(--gray-200);border-radius:8px;
   padding:9px 16px;font-family:var(--font);font-size:.85rem;font-weight:600;
@@ -597,7 +599,10 @@ select.status-select {
               <div class="card-title" style="margin-bottom:2px">Saldo de férias</div>
               <div class="card-sub" style="margin:0">Ciclo de 12 meses · 30 dias por ciclo concluído · clique no nome para ver o histórico</div>
             </div>
-            <button class="btn" onclick="abrirFeriaModal()">+ Novo período</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
+              <button class="btn" onclick="abrirFeriaModal()">+ Novo período</button>
+            </div>
           </div>
           <table class="data-table" id="feResumoTable"></table>
         </div>
@@ -946,6 +951,12 @@ select.status-select {
 <div id="funcionarioModal" class="modal-backdrop">
   <div class="modal-card">
     <div class="modal-title" id="funcionarioModalTitle">Nova pessoa</div>
+    <div id="fnRHWrap">
+      <label class="modal-label">Selecionar do cadastro RH — ONLINE · Ativo</label>
+      <select id="fnRHSelect" class="modal-select" onchange="onFnRHSelectChange_()">
+        <option value="">— selecione para preencher automaticamente —</option>
+      </select>
+    </div>
     <label class="modal-label">Nome</label>
     <input id="fnNome" class="modal-input" type="text">
     <div class="modal-row">
@@ -1000,7 +1011,7 @@ var CATEGORIA_COR = {
   OPERACIONAL:'#2a4d76'
 };
 
-var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, calView:'month', calRefDate:new Date(), escRefDate:new Date() };
+var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, funcionariosRH:[], calView:'month', calRefDate:new Date(), escRefDate:new Date() };
 
 // ── INIT ──────────────────────────────────────────────
 
@@ -1029,7 +1040,13 @@ function loadSecretaria() {
   google.script.run.withSuccessHandler(function(d){ state.secretaria = d; loadFerias(); }).withFailureHandler(showError).getSecretaria(TOKEN);
 }
 function loadFerias() {
-  google.script.run.withSuccessHandler(function(d){ state.ferias = d; onAllLoaded(); }).withFailureHandler(showError).getFeriasPagina(TOKEN);
+  google.script.run.withSuccessHandler(function(d){ state.ferias = d; loadFuncionariosRH(); }).withFailureHandler(showError).getFeriasPagina(TOKEN);
+}
+function loadFuncionariosRH() {
+  google.script.run
+    .withSuccessHandler(function(d){ state.funcionariosRH = d; onAllLoaded(); })
+    .withFailureHandler(function(){ state.funcionariosRH = []; onAllLoaded(); })
+    .getFuncionariosRH(TOKEN);
 }
 
 function onAllLoaded() {
@@ -1898,7 +1915,36 @@ function abrirFuncionarioModal(nome) {
   document.getElementById('fnDataAdmissao').value = f ? f.dataAdmissao : '';
   document.getElementById('fnDataDemissao').value = f ? f.dataDemissao : '';
   document.getElementById('funcionarioModalStatus').textContent = '';
+
+  // Popula select do RH — mostra só quando é nova pessoa
+  var wrap = document.getElementById('fnRHWrap');
+  var sel  = document.getElementById('fnRHSelect');
+  if (nome) {
+    wrap.style.display = 'none';
+  } else {
+    wrap.style.display = '';
+    var jaNoSistema = (state.ferias.resumo || []).map(function(r) { return r.nome.toLowerCase(); });
+    sel.innerHTML = '<option value="">— selecione para preencher automaticamente —</option>' +
+      (state.funcionariosRH.length
+        ? state.funcionariosRH.map(function(p) {
+            var jatem = jaNoSistema.indexOf(p.nome.toLowerCase()) !== -1;
+            return '<option value="' + esc(p.nome) + '" data-admissao="' + esc(p.dataAdmissao) + '"' +
+              (jatem ? ' style="color:var(--gray-400)"' : '') + '>' +
+              esc(p.nome) + (jatem ? ' (já cadastrada)' : '') + '</option>';
+          }).join('')
+        : '<option disabled>Carregando lista RH...</option>');
+    sel.value = '';
+  }
+
   document.getElementById('funcionarioModal').classList.add('open');
+}
+
+function onFnRHSelectChange_() {
+  var sel = document.getElementById('fnRHSelect');
+  var opt = sel.options[sel.selectedIndex];
+  if (!sel.value) return;
+  document.getElementById('fnNome').value = sel.value;
+  document.getElementById('fnDataAdmissao').value = opt.getAttribute('data-admissao') || '';
 }
 
 // Atalho usado pela aba Férias: pula direto pra sub-aba certa (Admissão ou

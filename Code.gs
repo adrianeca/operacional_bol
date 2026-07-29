@@ -19,6 +19,9 @@ const ABA_FERIAS          = 'FERIAS';
 const ABA_FUNCIONARIOS    = 'FUNCIONARIOS';
 const ABA_CHECKLIST_ADMISSAO = 'ADMISSAO_CHECKLIST';
 
+const RH_SS_ID    = '1BDiPjv0FqRJp5EwcvLdYXVvEAWesvwdEgbhYdnTlqPY';
+const RH_SHEET_GID = 566990656;
+
 // Itens do checklist de admissão, na ordem em que devem aparecer na tela.
 const CHECKLIST_ADMISSAO_ITENS = [
   'Carta ou Exame',
@@ -967,6 +970,29 @@ function saveFuncionario(token, f) {
   }
   sheet.appendRow([nome, dataAdmissao, dataDemissao, funcao, apelido, Utilities.getUuid()]);
   return getFuncionarios(token);
+}
+
+// Lê a planilha de RH da BRASAS e retorna os funcionários com unidade ONLINE
+// e status Ativo. Colunas: B=Unidade, C=Nome, J=DataAdmissão, K=Status.
+function getFuncionariosRH(token) {
+  requireUser_(token);
+  const ss = SpreadsheetApp.openById(RH_SS_ID);
+  const sheet = ss.getSheets().filter(function(s) { return s.getSheetId() === RH_SHEET_GID; })[0];
+  if (!sheet) throw new Error('Aba RH não encontrada (gid=' + RH_SHEET_GID + ').');
+  const rows = sheet.getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const unidade     = String(rows[i][1] || '');
+    const nome        = String(rows[i][2] || '').trim();
+    const dataAdmissao = rows[i][9];
+    const status      = String(rows[i][10] || '').trim();
+    if (!nome) continue;
+    if (norm_(status) !== 'ativo') continue;
+    if (unidade.toUpperCase().indexOf('ONLINE') === -1) continue;
+    out.push({ nome: nome, dataAdmissao: fmtData_(dataAdmissao) });
+  }
+  out.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
+  return out;
 }
 
 function saveCicloOverride(token, nome, cicloInicio, cicloFim) {
