@@ -373,6 +373,9 @@ select.status-select {
 }
 
 /* ── Sidebar de Férias ── */
+.func-filtros {display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+
+/* ── Sidebar de Férias ── */
 .ferias-sidebar-backdrop {
   position:fixed;inset:0;z-index:3000;display:none;
 }
@@ -614,6 +617,12 @@ select.status-select {
             <div class="card-title" style="margin-bottom:0">Funcionários ativos</div>
             <button class="btn" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
           </div>
+          <div class="func-filtros">
+            <input id="admNomeFiltro" class="modal-input" type="text" placeholder="Filtrar por nome…" oninput="renderAdmissaoSub_()" style="max-width:220px">
+            <select id="admAnoFiltro" class="modal-select" onchange="renderAdmissaoSub_()" style="max-width:140px">
+              <option value="">Todos os anos</option>
+            </select>
+          </div>
           <div class="entregas-wrap">
             <table class="data-table" id="admissaoTable"></table>
           </div>
@@ -622,7 +631,15 @@ select.status-select {
 
       <div id="funcSubDemissao" class="sub-tab-panel">
         <div class="card">
-          <div class="card-title">Funcionários desligados</div>
+          <div class="section-head">
+            <div class="card-title" style="margin-bottom:0">Funcionários desligados</div>
+          </div>
+          <div class="func-filtros">
+            <input id="demNomeFiltro" class="modal-input" type="text" placeholder="Filtrar por nome…" oninput="renderDemissaoSub_()" style="max-width:220px">
+            <select id="demAnoFiltro" class="modal-select" onchange="renderDemissaoSub_()" style="max-width:140px">
+              <option value="">Todos os anos</option>
+            </select>
+          </div>
           <div class="entregas-wrap">
             <table class="data-table" id="demissaoTable"></table>
           </div>
@@ -1733,6 +1750,17 @@ function novoFeriaSidebarPessoa_() {
 
 var ADMISSAO_EXCLUIDOS_ = ['Aline','Bruna','Elaine','Germana','Mel','Natasha','Nayara','Rafaela','Rosana'];
 
+function popularAnosFiltro_(selectId, registros, campoData) {
+  var anos = {};
+  registros.forEach(function(r) { if (r[campoData]) anos[r[campoData].slice(0,4)] = true; });
+  var sel = document.getElementById(selectId);
+  var atual = sel.value;
+  sel.innerHTML = '<option value="">Todos os anos</option>' +
+    Object.keys(anos).sort().reverse().map(function(a) {
+      return '<option value="' + a + '"' + (a === atual ? ' selected' : '') + '>' + a + '</option>';
+    }).join('');
+}
+
 function checklistCellStyle_(status) {
   if (status === 'Feito') return 'background:var(--success-100);color:var(--success-600);border-color:#bbf7d0';
   if (status === 'Não se aplica') return 'background:var(--gray-100);color:var(--gray-500);border-color:var(--gray-200)';
@@ -1764,8 +1792,16 @@ function checklistCellsHtml_(nome, processo, itens) {
 
 function renderAdmissaoSub_() {
   var itens = state.ferias.checklist.itens;
-  var ativos = state.ferias.resumo.filter(function(r) {
+  var base = state.ferias.resumo.filter(function(r) {
     return !r.dataDemissao && ADMISSAO_EXCLUIDOS_.indexOf(r.nome.split(' ')[0]) === -1;
+  });
+  popularAnosFiltro_('admAnoFiltro', base, 'dataAdmissao');
+  var nomeFiltro = (document.getElementById('admNomeFiltro').value || '').toLowerCase().trim();
+  var anoFiltro  = document.getElementById('admAnoFiltro').value;
+  var ativos = base.filter(function(r) {
+    var nomeOk = !nomeFiltro || r.nome.toLowerCase().indexOf(nomeFiltro) !== -1;
+    var anoOk  = !anoFiltro  || (r.dataAdmissao && r.dataAdmissao.slice(0,4) === anoFiltro);
+    return nomeOk && anoOk;
   });
   var cols = 3 + itens.length + 1;
   var thead = '<thead><tr><th>Nome</th><th>Função</th><th>Admissão</th>' +
@@ -1778,7 +1814,7 @@ function renderAdmissaoSub_() {
       '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
       checklistCellsHtml_(r.nome, 'ADMISSAO', itens) +
       '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
-  }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada.</td></tr>') + '</tbody>';
+  }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum resultado.</td></tr>') + '</tbody>';
   document.getElementById('admissaoTable').innerHTML = thead + tbody;
 }
 
@@ -1836,7 +1872,15 @@ function onChecklistItemChange_(selectEl) {
 
 function renderDemissaoSub_() {
   var itens = state.ferias.checklist.itens;
-  var desligados = state.ferias.resumo.filter(function(r) { return r.dataDemissao; });
+  var base = state.ferias.resumo.filter(function(r) { return r.dataDemissao; });
+  popularAnosFiltro_('demAnoFiltro', base, 'dataDemissao');
+  var nomeFiltro = (document.getElementById('demNomeFiltro').value || '').toLowerCase().trim();
+  var anoFiltro  = document.getElementById('demAnoFiltro').value;
+  var desligados = base.filter(function(r) {
+    var nomeOk = !nomeFiltro || r.nome.toLowerCase().indexOf(nomeFiltro) !== -1;
+    var anoOk  = !anoFiltro  || (r.dataDemissao && r.dataDemissao.slice(0,4) === anoFiltro);
+    return nomeOk && anoOk;
+  });
   var cols = 4 + itens.length + 1;
   var thead = '<thead><tr><th>Nome</th><th>Função</th><th>Admissão</th><th>Demissão</th>' +
     itens.map(function(it) {
@@ -1849,7 +1893,7 @@ function renderDemissaoSub_() {
       '<td>' + fmtDataBR(r.dataDemissao) + '</td>' +
       checklistCellsHtml_(r.nome, 'DEMISSAO', itens) +
       '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
-  }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum desligamento registrado.</td></tr>') + '</tbody>';
+  }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum resultado.</td></tr>') + '</tbody>';
   document.getElementById('demissaoTable').innerHTML = thead + tbody;
 }
 
