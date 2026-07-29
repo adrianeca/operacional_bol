@@ -1951,7 +1951,7 @@ function excluirFeria() {
 var funcionarioEditNomeOriginal = null;
 var funcionarioEditId = null;
 
-function abrirFuncionarioModal(nome) {
+function abrirFuncionarioModal(nome, semDelete) {
   funcionarioEditNomeOriginal = nome || null;
   var f = nome ? (state.ferias.funcionarios || []).filter(function(x){ return x.nome === nome; })[0] : null;
   funcionarioEditId = (f && f.id && f.id !== 'undefined') ? f.id : null;
@@ -1983,7 +1983,7 @@ function abrirFuncionarioModal(nome) {
     sel.value = '';
   }
 
-  document.getElementById('fnDeleteBtn').style.display = nome ? '' : 'none';
+  document.getElementById('fnDeleteBtn').style.display = (nome && !semDelete) ? '' : 'none';
   document.getElementById('funcionarioModal').classList.add('open');
 }
 
@@ -2008,7 +2008,7 @@ function onFnRHSelectChange_() {
 // Demissão, conforme a pessoa já tenha sido desligada) e abre a edição.
 function editarFuncionarioDeFerias_(nome, temDemissao) {
   switchFuncSubTab(temDemissao ? 'demissao' : 'admissao');
-  abrirFuncionarioModal(nome);
+  abrirFuncionarioModal(nome, true);
 }
 
 function salvarFuncionario() {
