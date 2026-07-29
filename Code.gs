@@ -198,6 +198,14 @@ function getDashboard(token) {
     });
   }
 
+  const feriasPeriodos = getFerias(token);
+  quemTrabalha = quemTrabalha.map(function(p) {
+    const deFerias = feriasPeriodos.some(function(f) {
+      return norm_(f.pessoa) === norm_(p.nome) && f.dataInicio <= hojeStr && f.dataFim >= hojeStr;
+    });
+    return deFerias ? Object.assign({}, p, { ferias: true }) : p;
+  });
+
   const eventos  = getEventos(token);
   const hojeMs   = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).getTime();
   const limiteMs = hojeMs + 7 * 86400000;

@@ -429,6 +429,12 @@ select.status-select {
 .ferias-sidebar-footer {
   padding:16px 24px;border-top:1px solid var(--gray-200);flex-shrink:0;
 }
+.ferias-badge {
+  display:inline-block;font-size:.68rem;font-weight:700;
+  background:var(--success-100);color:var(--success-600);
+  border:1px solid #bbf7d0;border-radius:999px;
+  padding:1px 7px;vertical-align:middle;
+}
 .nome-link {
   cursor:pointer;color:var(--navy-600);font-weight:600;
   text-decoration:underline;text-decoration-color:transparent;
@@ -1104,7 +1110,10 @@ function renderQuemTrabalha(lista) {
 
   if (!comHorario.length) {
     el.innerHTML = lista.map(function(p) {
-      return '<div class="who-row"><div><div class="who-name">' + esc(p.nome) + '</div>' +
+      var nameHtml = p.ferias
+        ? '<span style="text-decoration:line-through;opacity:.55">' + esc(p.nome) + '</span> <span class="ferias-badge">🌴 férias</span>'
+        : esc(p.nome);
+      return '<div class="who-row"><div><div class="who-name">' + nameHtml + '</div>' +
         (p.ajuste ? '<div class="who-ajuste">' + esc(p.ajuste) + '</div>' : '') + '</div>' +
         '<div class="who-horario">' + esc(p.horario || '—') + '</div></div>';
     }).join('');
@@ -1136,8 +1145,11 @@ function renderQuemTrabalha(lista) {
     } else {
       bar = '<div class="tl-bar tl-bar-full">' + esc(p.horario || '—') + '</div>';
     }
+    var tlNameHtml = p.ferias
+      ? '<span style="text-decoration:line-through;opacity:.55">' + esc(p.nome) + '</span> <span class="ferias-badge">🌴 férias</span>'
+      : esc(p.nome);
     return '<div class="tl-row">' +
-      '<div class="tl-name">' + esc(p.nome) + (p.ajuste ? '<div class="tl-ajuste-tag">' + esc(p.ajuste) + '</div>' : '') + '</div>' +
+      '<div class="tl-name">' + tlNameHtml + (p.ajuste ? '<div class="tl-ajuste-tag">' + esc(p.ajuste) + '</div>' : '') + '</div>' +
       '<div class="tl-track">' + tickHtml + bar + '</div>' +
       '</div>';
   }).join('');
