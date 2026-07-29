@@ -1905,10 +1905,12 @@ function excluirFeria() {
 }
 
 var funcionarioEditNomeOriginal = null;
+var funcionarioEditId = null;
 
 function abrirFuncionarioModal(nome) {
   funcionarioEditNomeOriginal = nome || null;
   var f = nome ? (state.ferias.funcionarios || []).filter(function(x){ return x.nome === nome; })[0] : null;
+  funcionarioEditId = (f && f.id && f.id !== 'undefined') ? f.id : null;
   document.getElementById('funcionarioModalTitle').textContent = nome ? 'Editar funcionário' : 'Nova pessoa';
   document.getElementById('fnNome').value = nome || '';
   document.getElementById('fnFuncao').value = f ? f.funcao : '';
@@ -1971,6 +1973,7 @@ function salvarFuncionario() {
   if (!nome) { status.textContent = 'Informe o nome.'; status.className = 'modal-status error'; return; }
 
   var payload = {
+    id: funcionarioEditId,
     nome: nome,
     nomeOriginal: funcionarioEditNomeOriginal,
     funcao: document.getElementById('fnFuncao').value.trim(),

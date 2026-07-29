@@ -945,7 +945,7 @@ function funcionarioFromRow_(r) {
     funcao: String(r[3] || '').trim(),
     apelido: String(r[4] || '').trim(),
     ativo: !dataDemissao,
-    id: String(r[5]),
+    id: String(r[5] || ''),
     cicloInicioOverride: fmtData_(r[6]),
     cicloFimOverride: fmtData_(r[7])
   };
@@ -969,7 +969,8 @@ function saveFuncionario(token, f) {
 
   const nome = String(f.nome || '').trim();
   if (!nome) throw new Error('Informe o nome.');
-  const chaveOriginal = norm_(f.nomeOriginal || nome);
+  const idParam        = String(f.id || '').trim();
+  const chaveOriginal  = norm_(f.nomeOriginal || nome);
   const dataAdmissao = f.dataAdmissao ? new Date(f.dataAdmissao + 'T00:00:00') : '';
   const dataDemissao = f.dataDemissao ? new Date(f.dataDemissao + 'T00:00:00') : '';
   const funcao = String(f.funcao || '').trim();
@@ -977,7 +978,10 @@ function saveFuncionario(token, f) {
 
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (norm_(rows[i][0]) === chaveOriginal) {
+    const rowId   = String(rows[i][5] || '').trim();
+    const rowNome = norm_(rows[i][0]);
+    const match   = (idParam && rowId === idParam) || (!idParam && rowNome === chaveOriginal);
+    if (match) {
       sheet.getRange(i + 1, 1, 1, 5).setValues([[nome, dataAdmissao, dataDemissao, funcao, apelido]]);
       return getFuncionarios(token);
     }
