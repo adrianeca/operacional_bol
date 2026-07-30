@@ -27,6 +27,8 @@ const ABA_PERIODOS_AQUISITIVOS = 'PERIODOS_AQUISITIVOS';
 const ABA_SOLICITACOES_FERIAS  = 'SOLICITACOES_FERIAS';
 const ABA_FUNCIONARIOS    = 'FUNCIONARIOS';
 const ABA_CHECKLIST_ADMISSAO = 'ADMISSAO_CHECKLIST';
+const ABA_PROJETOS_COLUNAS = 'PROJETOS_COLUNAS';
+const ABA_PROJETOS_CARTOES = 'PROJETOS_CARTOES';
 
 const RH_SS_ID    = '1BDiPjv0FqRJp5EwcvLdYXVvEAWesvwdEgbhYdnTlqPY';
 const RH_SHEET_GID = 566990656;
@@ -1049,13 +1051,31 @@ function saveFuncionario(token, f) {
     const rowNome = norm_(rows[i][0]);
     const match   = (idParam && rowId === idParam) || (!idParam && rowNome === chaveOriginal);
     if (match) {
+      const nomeAntigo = String(rows[i][0] || '').trim();
       sheet.getRange(i + 1, 1, 1, 5).setValues([[nome, dataAdmissao, dataDemissao, funcao, apelido]]);
       sheet.getRange(i + 1, 12).setValue(email);
+      if (norm_(nomeAntigo) !== norm_(nome)) propagarRenomeacaoPessoa_(nomeAntigo, nome);
       return getFuncionariosImpl_();
     }
   }
   sheet.appendRow([nome, dataAdmissao, dataDemissao, funcao, apelido, Utilities.getUuid(), '', '', '', '', '', email]);
   return getFuncionariosImpl_();
+}
+
+// FERIAS, PERIODOS_AQUISITIVOS e SOLICITACOES_FERIAS referenciam a pessoa
+// pelo nome (não pelo ID do funcionário). Renomear alguém só no Cadastro
+// deixaria essas três abas apontando para um nome que não existe mais —
+// férias e períodos aquisitivos sumiriam da tela sem aviso. Por isso o
+// rename é propagado para todas elas.
+function propagarRenomeacaoPessoa_(nomeAntigo, nomeNovo) {
+  const chave = norm_(nomeAntigo);
+  if (!chave) return;
+  [getFeriasSheet_(), getPeriodosAquisitivosSheet_(), getSolicitacoesSheet_()].forEach(function(sheet) {
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (norm_(rows[i][0]) === chave) sheet.getRange(i + 1, 1).setValue(nomeNovo);
+    }
+  });
 }
 
 // Lê a planilha de RH da BRASAS e retorna os funcionários com unidade ONLINE
@@ -1136,12 +1156,24 @@ function sincronizarFuncionariosRH(token) {
   return { funcionarios: getFuncionariosImpl_(), adicionados: adicionados, atualizados: atualizados };
 }
 
+const FERIAS_HEADERS_ = ['Pessoa', 'Data_Inicio', 'Data_Fim', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID', 'Periodo_Aquisitivo_ID'];
+
 function getFeriasSheet_() {
   const ss = getOpSS_();
   let sheet = ss.getSheetByName(ABA_FERIAS);
   if (!sheet) {
     sheet = ss.insertSheet(ABA_FERIAS);
-    sheet.appendRow(['Pessoa', 'Data_Inicio', 'Data_Fim', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID']);
+    sheet.appendRow(FERIAS_HEADERS_);
+    return sheet;
+  }
+  // Periodo_Aquisitivo_ID diz de qual período aquisitivo esses dias são
+  // abatidos. Fica em branco nos lançamentos antigos (e em qualquer um que o
+  // usuário não queira abater de nenhum período) — nesse caso os dias
+  // aparecem no histórico mas não entram no saldo de nenhum período.
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < FERIAS_HEADERS_.length) {
+    sheet.getRange(1, lastCol + 1, 1, FERIAS_HEADERS_.length - lastCol)
+      .setValues([FERIAS_HEADERS_.slice(lastCol)]);
   }
   return sheet;
 }
@@ -1151,22 +1183,39 @@ function getFeriasSheet_() {
 // =============================================================================
 // Cada período aquisitivo são os 12 meses trabalhados que dão direito a 30
 // dias de férias; a data limite de gozo (quando esses dias têm que ser
-// usados, sob risco de pagamento em dobro) é sempre 12 meses após o fim do
-// período aquisitivo. Por padrão o sistema calcula automaticamente, a partir
-// da data de admissão, todos os períodos já completos e ainda com saldo em
-// aberto (podendo ser mais de um, se a pessoa acumulou períodos sem tirar
-// férias). Se alguém tiver períodos cadastrados manualmente aqui, eles
-// substituem totalmente o cálculo automático pra essa pessoa.
+// usados, sob risco de pagamento em dobro) cai 11 meses após o fim do
+// período aquisitivo. Todos os períodos são cadastrados manualmente — o
+// sistema não gera nenhum sozinho a partir da data de admissão.
+// A coluna Data_Limite_Gozo guarda um limite escrito à mão; quando está em
+// branco, vale o cálculo de MESES_ATE_LIMITE_GOZO_.
+
+const MESES_ATE_LIMITE_GOZO_ = 11;
+
+const PERIODOS_AQUISITIVOS_HEADERS_ = ['Pessoa', 'Data_Inicio', 'Data_Fim', 'ID', 'Data_Limite_Gozo'];
 
 function getPeriodosAquisitivosSheet_() {
   const ss = getOpSS_();
   let sheet = ss.getSheetByName(ABA_PERIODOS_AQUISITIVOS);
   if (!sheet) {
     sheet = ss.insertSheet(ABA_PERIODOS_AQUISITIVOS);
-    sheet.appendRow(['Pessoa', 'Data_Inicio', 'Data_Fim', 'ID']);
+    sheet.appendRow(PERIODOS_AQUISITIVOS_HEADERS_);
     migrarPeriodosAquisitivosLegado_(sheet);
+    return sheet;
+  }
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < PERIODOS_AQUISITIVOS_HEADERS_.length) {
+    sheet.getRange(1, lastCol + 1, 1, PERIODOS_AQUISITIVOS_HEADERS_.length - lastCol)
+      .setValues([PERIODOS_AQUISITIVOS_HEADERS_.slice(lastCol)]);
   }
   return sheet;
+}
+
+// Data limite de gozo de um período: o que foi escrito à mão, ou o cálculo
+// padrão (fim do aquisitivo + MESES_ATE_LIMITE_GOZO_) quando não há override.
+function limiteGozoDe_(dataFimIso, overrideIso) {
+  if (overrideIso) return overrideIso;
+  if (!dataFimIso) return '';
+  return fmtData_(addMeses_(new Date(dataFimIso + 'T00:00:00'), MESES_ATE_LIMITE_GOZO_));
 }
 
 // Migração única: converte o antigo override de ciclo (colunas
@@ -1174,7 +1223,8 @@ function getPeriodosAquisitivosSheet_() {
 // o período concessivo — a janela de uso, não o aquisitivo) num período
 // aquisitivo equivalente na aba nova, pra quem já tinha um customizado.
 // O início do período aquisitivo é deduzido subtraindo 12 meses do início do
-// concessivo salvo (que corresponde ao fim do aquisitivo).
+// concessivo salvo (que corresponde ao fim do aquisitivo) — 12 aqui é a
+// duração do próprio período aquisitivo, não tem relação com o prazo de gozo.
 function migrarPeriodosAquisitivosLegado_(sheet) {
   const funcSheet = getOpSS_().getSheetByName(ABA_FUNCIONARIOS);
   if (!funcSheet) return;
@@ -1192,11 +1242,15 @@ function migrarPeriodosAquisitivosLegado_(sheet) {
 }
 
 function periodoAquisitivoFromRow_(r) {
+  const dataFim = fmtData_(r[2]);
+  const limiteOverride = fmtData_(r[4]);
   return {
     id: String(r[3] || ''),
     pessoa: String(r[0] || '').trim(),
     dataInicio: fmtData_(r[1]),
-    dataFim: fmtData_(r[2])
+    dataFim: dataFim,
+    dataLimiteGozo: limiteGozoDe_(dataFim, limiteOverride),
+    limiteCustomizado: !!limiteOverride
   };
 }
 
@@ -1230,17 +1284,27 @@ function savePeriodoAquisitivo(token, p) {
   const ini = new Date(dataInicio + 'T00:00:00');
   const fim = new Date(dataFim + 'T00:00:00');
 
+  // Só guarda a data limite quando ela difere do cálculo padrão: assim, quem
+  // não mexeu no campo continua acompanhando a regra automaticamente se o
+  // fim do período aquisitivo mudar depois.
+  const limiteInformado = String(p.dataLimiteGozo || '').trim();
+  const limiteOverride = (limiteInformado && limiteInformado !== limiteGozoDe_(dataFim, ''))
+    ? new Date(limiteInformado + 'T00:00:00')
+    : '';
+  if (limiteInformado && limiteInformado < dataFim) throw new Error('A data limite de gozo não pode ser anterior ao fim do período aquisitivo.');
+
   if (p.id) {
     const rows = sheet.getDataRange().getValues();
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][3]) === String(p.id)) {
         sheet.getRange(i + 1, 1, 1, 3).setValues([[pessoa, ini, fim]]);
+        sheet.getRange(i + 1, 5).setValue(limiteOverride);
         return getFeriasPagina(token);
       }
     }
     throw new Error('Período aquisitivo não encontrado.');
   }
-  sheet.appendRow([pessoa, ini, fim, Utilities.getUuid()]);
+  sheet.appendRow([pessoa, ini, fim, Utilities.getUuid(), limiteOverride]);
   return getFeriasPagina(token);
 }
 
@@ -1340,7 +1404,10 @@ function solicitarFerias(token, payload) {
   return getMinhaFeriasPagina(token);
 }
 
-function aprovarSolicitacao(token, id) {
+// periodoAquisitivoId: de qual período aquisitivo esses dias serão abatidos.
+// Quem aprova escolhe na hora; em branco significa "registra as férias mas
+// não abate de nenhum período" (aparece marcado no histórico da pessoa).
+function aprovarSolicitacao(token, id, periodoAquisitivoId) {
   const admin = requireAdmin_(token);
   const sheet = getSolicitacoesSheet_();
   const rows = sheet.getDataRange().getValues();
@@ -1357,7 +1424,10 @@ function aprovarSolicitacao(token, id) {
 
       // Aprovar já registra o período como férias efetivamente tiradas, pra
       // contar automaticamente no saldo — sem precisar lançar de novo à mão.
-      getFeriasSheet_().appendRow([pessoa, new Date(dataInicio + 'T00:00:00'), new Date(dataFim + 'T00:00:00'), observacao, admin.email, new Date(), Utilities.getUuid()]);
+      getFeriasSheet_().appendRow([
+        pessoa, new Date(dataInicio + 'T00:00:00'), new Date(dataFim + 'T00:00:00'), observacao,
+        admin.email, new Date(), Utilities.getUuid(), String(periodoAquisitivoId || '').trim()
+      ]);
 
       return getSolicitacoesImpl_();
     }
@@ -1428,7 +1498,8 @@ function feriaFromRow_(r) {
     dias: diasEntre_(dataInicio, dataFim),
     observacao: String(r[3] || '').trim(),
     criadoPor: String(r[4] || '').trim(),
-    criadoEm: fmtDataHora_(r[5])
+    criadoEm: fmtDataHora_(r[5]),
+    periodoAquisitivoId: String(r[7] || '').trim()
   };
 }
 
@@ -1463,6 +1534,7 @@ function saveFeria(token, f) {
   if (!pessoa || !dataInicio || !dataFim) throw new Error('Informe a pessoa e o período.');
   if (dataFim < dataInicio) throw new Error('A data final não pode ser anterior à data inicial.');
   const observacao = String(f.observacao || '').trim();
+  const periodoAquisitivoId = String(f.periodoAquisitivoId || '').trim();
   const ini = new Date(dataInicio + 'T00:00:00');
   const fim = new Date(dataFim + 'T00:00:00');
 
@@ -1471,13 +1543,14 @@ function saveFeria(token, f) {
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][6]) === String(f.id)) {
         sheet.getRange(i + 1, 1, 1, 4).setValues([[pessoa, ini, fim, observacao]]);
+        sheet.getRange(i + 1, 8).setValue(periodoAquisitivoId);
         return getFerias(token);
       }
     }
     throw new Error('Período de férias não encontrado.');
   }
 
-  sheet.appendRow([pessoa, ini, fim, observacao, user.email, new Date(), Utilities.getUuid()]);
+  sheet.appendRow([pessoa, ini, fim, observacao, user.email, new Date(), Utilities.getUuid(), periodoAquisitivoId]);
   return getFerias(token);
 }
 
@@ -1516,9 +1589,12 @@ function getFeriasResumo(token) {
       rastreadoFerias: f.rastreadoFerias, rastreadoAdmissao: f.rastreadoAdmissao, rastreadoDemissao: f.rastreadoDemissao
     };
   });
+  // Quem tem férias lançadas mas não está no Cadastro entra aqui só pra
+  // alimentar listas de nomes conhecidos — nunca como rastreado, senão
+  // apareceria sozinho nas sub-abas sem ninguém ter adicionado.
   ferias.forEach(function(f) {
     const k = norm_(f.pessoa);
-    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '', rastreadoFerias: true, rastreadoAdmissao: false, rastreadoDemissao: false };
+    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '', rastreadoFerias: false, rastreadoAdmissao: false, rastreadoDemissao: false };
   });
 
   return Object.keys(pessoas).map(function(k) {
@@ -1536,26 +1612,29 @@ function getFeriasResumo(token) {
   }).sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
 }
 
-// Soma os dias de férias já tirados por uma pessoa dentro da janela de uso
-// (gozo) de um período aquisitivo: do fim do aquisitivo (quando os 30 dias
-// são liberados) até a data limite de gozo (12 meses depois).
-function diasTiradosNaJanela_(feriasPessoa, aquisitivoFim, dataLimiteGozo) {
+// Soma os dias de férias abatidos de um período aquisitivo. O vínculo é
+// explícito (coluna Periodo_Aquisitivo_ID da aba FERIAS, escolhida por quem
+// lança as férias) — o sistema não tenta adivinhar por data a qual período
+// cada férias pertence, porque isso errava sempre que as férias caíam fora
+// da janela de gozo (antecipadas, por exemplo).
+function diasTiradosDoPeriodo_(feriasPessoa, periodoId) {
+  if (!periodoId) return 0;
   let total = 0;
   feriasPessoa.forEach(function(f) {
-    if (f.dataInicio >= aquisitivoFim && f.dataInicio < dataLimiteGozo) total += f.dias;
+    if (f.periodoAquisitivoId === periodoId) total += f.dias;
   });
   return total;
 }
 
-function periodoAquisitivoComSaldo_(dataInicio, dataFim, id, feriasPessoa) {
-  const dataLimiteGozo = fmtData_(addMeses_(new Date(dataFim + 'T00:00:00'), 12));
-  const diasTirados = diasTiradosNaJanela_(feriasPessoa, dataFim, dataLimiteGozo);
+function periodoAquisitivoComSaldo_(periodo, feriasPessoa) {
+  const diasTirados = diasTiradosDoPeriodo_(feriasPessoa, periodo.id);
   return {
-    id: id || '',
-    manual: !!id,
-    periodoAquisitivoInicio: dataInicio,
-    periodoAquisitivoFim: dataFim,
-    dataLimiteGozo: dataLimiteGozo,
+    id: periodo.id || '',
+    manual: !!periodo.id,
+    periodoAquisitivoInicio: periodo.dataInicio,
+    periodoAquisitivoFim: periodo.dataFim,
+    dataLimiteGozo: periodo.dataLimiteGozo,
+    limiteCustomizado: !!periodo.limiteCustomizado,
     diasTirados: diasTirados,
     diasRestantes: Math.max(0, 30 - diasTirados)
   };
@@ -1573,7 +1652,7 @@ function periodosDaPessoa_(nome, ferias, periodosManuais) {
   const manuais = periodosManuais.filter(function(m) { return norm_(m.pessoa) === k; });
 
   let periodos = manuais
-    .map(function(m) { return periodoAquisitivoComSaldo_(m.dataInicio, m.dataFim, m.id, feriasPessoa); })
+    .map(function(m) { return periodoAquisitivoComSaldo_(m, feriasPessoa); })
     .sort(function(a, b) { return a.periodoAquisitivoInicio.localeCompare(b.periodoAquisitivoInicio); });
 
   if (!periodos.length) {
@@ -1590,13 +1669,11 @@ function getFeriasSaldos(token) {
   const ferias = getFeriasImpl_();
   const periodosManuais = getPeriodosAquisitivosImpl_();
 
+  // Só quem está no Cadastro entra aqui: ter férias lançadas não coloca
+  // ninguém automaticamente nesta aba — a inclusão é sempre manual.
   const pessoas = {};
   funcionarios.forEach(function(f) {
     pessoas[norm_(f.nome)] = { nome: f.nome, funcao: f.funcao, apelido: f.apelido, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, rastreadoFerias: f.rastreadoFerias };
-  });
-  ferias.forEach(function(f) {
-    const k = norm_(f.pessoa);
-    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, funcao: '', apelido: '', dataAdmissao: '', dataDemissao: '', rastreadoFerias: true };
   });
 
   const out = [];
@@ -1608,7 +1685,8 @@ function getFeriasSaldos(token) {
         nome: p.nome, funcao: p.funcao, apelido: p.apelido, dataAdmissao: p.dataAdmissao, dataDemissao: p.dataDemissao,
         id: per.id, manual: per.manual,
         periodoAquisitivoInicio: per.periodoAquisitivoInicio, periodoAquisitivoFim: per.periodoAquisitivoFim,
-        dataLimiteGozo: per.dataLimiteGozo, diasTirados: per.diasTirados, diasRestantes: per.diasRestantes
+        dataLimiteGozo: per.dataLimiteGozo, limiteCustomizado: per.limiteCustomizado,
+        diasTirados: per.diasTirados, diasRestantes: per.diasRestantes
       });
     });
   });
@@ -1707,6 +1785,211 @@ function saveChecklistItem(token, nome, processo, item, status) {
   }
   sheet.appendRow([nome, processoNorm, item, status, user.email, new Date()]);
   return getChecklist(token);
+}
+
+// =============================================================================
+// PROJETOS (quadro estilo Trello)
+// =============================================================================
+// Duas abas: PROJETOS_COLUNAS guarda as raias do quadro (nome + ordem) e
+// PROJETOS_CARTOES os cartões, cada um apontando para uma coluna. A posição
+// dentro da coluna vem da coluna Ordem — quem arrasta um cartão na tela manda
+// a lista inteira de IDs já na ordem nova, e o backend só regrava os índices.
+// Nenhuma coluna é criada automaticamente: o quadro nasce vazio.
+
+function getProjetosColunasSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_PROJETOS_COLUNAS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_PROJETOS_COLUNAS);
+    sheet.appendRow(['Nome', 'Ordem', 'ID']);
+  }
+  return sheet;
+}
+
+function getProjetosCartoesSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_PROJETOS_CARTOES);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_PROJETOS_CARTOES);
+    sheet.appendRow(['Coluna_ID', 'Titulo', 'Descricao', 'Responsavel', 'Prazo', 'Etiqueta', 'Etiqueta_Cor', 'Ordem', 'Criado_Por', 'Criado_Em', 'ID']);
+  }
+  return sheet;
+}
+
+function colunaProjetoFromRow_(r) {
+  return {
+    id: String(r[2] || ''),
+    nome: String(r[0] || '').trim(),
+    ordem: Number(r[1]) || 0
+  };
+}
+
+function cartaoProjetoFromRow_(r) {
+  return {
+    id: String(r[10] || ''),
+    colunaId: String(r[0] || '').trim(),
+    titulo: String(r[1] || '').trim(),
+    descricao: String(r[2] || '').trim(),
+    responsavel: String(r[3] || '').trim(),
+    prazo: fmtData_(r[4]),
+    etiqueta: String(r[5] || '').trim(),
+    etiquetaCor: String(r[6] || '').trim(),
+    ordem: Number(r[7]) || 0,
+    criadoPor: String(r[8] || '').trim(),
+    criadoEm: fmtDataHora_(r[9])
+  };
+}
+
+function getProjetosPagina(token) {
+  requireAdmin_(token);
+
+  const colRows = getProjetosColunasSheet_().getDataRange().getValues();
+  const colunas = [];
+  for (let i = 1; i < colRows.length; i++) {
+    if (!colRows[i][0]) continue;
+    colunas.push(colunaProjetoFromRow_(colRows[i]));
+  }
+  colunas.sort(function(a, b) { return a.ordem - b.ordem; });
+
+  const cardRows = getProjetosCartoesSheet_().getDataRange().getValues();
+  const cartoes = [];
+  for (let i = 1; i < cardRows.length; i++) {
+    if (!cardRows[i][1]) continue; // sem título
+    cartoes.push(cartaoProjetoFromRow_(cardRows[i]));
+  }
+  cartoes.sort(function(a, b) { return a.ordem - b.ordem; });
+
+  return { colunas: colunas, cartoes: cartoes };
+}
+
+function saveColunaProjeto(token, c) {
+  requireAdmin_(token);
+  const sheet = getProjetosColunasSheet_();
+  const nome = String(c.nome || '').trim();
+  if (!nome) throw new Error('Informe o nome da coluna.');
+
+  const rows = sheet.getDataRange().getValues();
+  if (c.id) {
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][2]) === String(c.id)) {
+        sheet.getRange(i + 1, 1).setValue(nome);
+        return getProjetosPagina(token);
+      }
+    }
+    throw new Error('Coluna não encontrada.');
+  }
+
+  // Nova coluna entra no fim do quadro.
+  let maiorOrdem = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][0]) maiorOrdem = Math.max(maiorOrdem, Number(rows[i][1]) || 0);
+  }
+  sheet.appendRow([nome, maiorOrdem + 1, Utilities.getUuid()]);
+  return getProjetosPagina(token);
+}
+
+// Recusa apagar coluna que ainda tem cartão: excluir junto apagaria trabalho
+// registrado sem a pessoa perceber.
+function deleteColunaProjeto(token, id) {
+  requireAdmin_(token);
+  const cartoes = getProjetosCartoesSheet_().getDataRange().getValues();
+  let usados = 0;
+  for (let i = 1; i < cartoes.length; i++) {
+    if (String(cartoes[i][0]) === String(id) && cartoes[i][1]) usados++;
+  }
+  if (usados) throw new Error('Esta coluna ainda tem ' + usados + ' cartão(ões). Mova ou exclua antes de apagar a coluna.');
+
+  const sheet = getProjetosColunasSheet_();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][2]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  return getProjetosPagina(token);
+}
+
+// idsOrdenados = todas as colunas na ordem nova, como a tela mostra.
+function reordenarColunasProjeto(token, idsOrdenados) {
+  requireAdmin_(token);
+  const sheet = getProjetosColunasSheet_();
+  const rows = sheet.getDataRange().getValues();
+  const posicao = {};
+  (idsOrdenados || []).forEach(function(id, i) { posicao[String(id)] = i + 1; });
+  for (let i = 1; i < rows.length; i++) {
+    const nova = posicao[String(rows[i][2])];
+    if (nova) sheet.getRange(i + 1, 2).setValue(nova);
+  }
+  return getProjetosPagina(token);
+}
+
+function saveCartaoProjeto(token, c) {
+  const user = requireAdmin_(token);
+  const sheet = getProjetosCartoesSheet_();
+
+  const titulo = String(c.titulo || '').trim();
+  const colunaId = String(c.colunaId || '').trim();
+  if (!titulo) throw new Error('Informe o título do cartão.');
+  if (!colunaId) throw new Error('Escolha a coluna do cartão.');
+
+  const descricao = String(c.descricao || '').trim();
+  const responsavel = String(c.responsavel || '').trim();
+  const prazo = c.prazo ? new Date(c.prazo + 'T00:00:00') : '';
+  const etiqueta = String(c.etiqueta || '').trim();
+  const etiquetaCor = String(c.etiquetaCor || '').trim();
+
+  const rows = sheet.getDataRange().getValues();
+  if (c.id) {
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][10]) === String(c.id)) {
+        sheet.getRange(i + 1, 1, 1, 7).setValues([[colunaId, titulo, descricao, responsavel, prazo, etiqueta, etiquetaCor]]);
+        return getProjetosPagina(token);
+      }
+    }
+    throw new Error('Cartão não encontrado.');
+  }
+
+  // Cartão novo entra no fim da coluna escolhida.
+  let maiorOrdem = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === colunaId) maiorOrdem = Math.max(maiorOrdem, Number(rows[i][7]) || 0);
+  }
+  sheet.appendRow([colunaId, titulo, descricao, responsavel, prazo, etiqueta, etiquetaCor, maiorOrdem + 1, user.email, new Date(), Utilities.getUuid()]);
+  return getProjetosPagina(token);
+}
+
+function deleteCartaoProjeto(token, id) {
+  requireAdmin_(token);
+  const sheet = getProjetosCartoesSheet_();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][10]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  return getProjetosPagina(token);
+}
+
+// Chamada ao soltar um cartão: idsOrdenadosDestino são todos os cartões da
+// coluna de destino já na ordem final que a tela mostra (incluindo o que
+// acabou de chegar), então uma passada só resolve mover e reordenar.
+function moverCartaoProjeto(token, cartaoId, colunaDestinoId, idsOrdenadosDestino) {
+  requireAdmin_(token);
+  const sheet = getProjetosCartoesSheet_();
+  const rows = sheet.getDataRange().getValues();
+
+  const posicao = {};
+  (idsOrdenadosDestino || []).forEach(function(id, i) { posicao[String(id)] = i + 1; });
+
+  for (let i = 1; i < rows.length; i++) {
+    const id = String(rows[i][10]);
+    if (id === String(cartaoId)) sheet.getRange(i + 1, 1).setValue(String(colunaDestinoId));
+    const nova = posicao[id];
+    if (nova) sheet.getRange(i + 1, 8).setValue(nova);
+  }
+  return getProjetosPagina(token);
 }
 
 // Seed único: registra as férias já cumpridas informadas em 2026. Rode

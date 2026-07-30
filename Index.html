@@ -447,6 +447,58 @@ select.status-select {
   transition:text-decoration-color .15s,color .15s;
 }
 .nome-link:hover {color:var(--navy-400);text-decoration-color:var(--navy-300)}
+
+/* ── Quadro de Projetos (estilo kanban) ── */
+.proj-board {display:flex;gap:14px;overflow-x:auto;align-items:flex-start;padding-bottom:8px}
+.proj-col {
+  flex:0 0 288px;width:288px;
+  background:var(--gray-50);border:1px solid var(--gray-200);border-radius:12px;
+  display:flex;flex-direction:column;max-height:68vh;
+}
+.proj-col-head {display:flex;align-items:flex-start;gap:6px;padding:12px 12px 8px}
+.proj-col-nome {flex:1;font-size:.88rem;font-weight:700;color:var(--navy-800);word-break:break-word;line-height:1.3}
+.proj-col-count {
+  font-size:.72rem;font-weight:700;color:var(--gray-500);
+  background:var(--gray-200);border-radius:999px;padding:1px 8px;flex-shrink:0;
+}
+.proj-col-acoes {display:flex;gap:1px;flex-shrink:0}
+.proj-col-body {
+  flex:1;overflow-y:auto;min-height:48px;
+  padding:2px 10px 10px;display:flex;flex-direction:column;gap:8px;
+  border-radius:0 0 12px 12px;transition:background .12s;
+}
+.proj-col-body.drag-over {background:var(--navy-50)}
+.proj-col-vazia {font-size:.78rem;color:var(--gray-400);font-style:italic;padding:8px 2px}
+.proj-card {
+  background:var(--white);border:1px solid var(--gray-200);border-radius:8px;
+  box-shadow:var(--shadow-sm);padding:10px 12px;cursor:grab;
+  transition:border-color .12s,box-shadow .12s;
+}
+.proj-card:hover {border-color:var(--navy-300);box-shadow:var(--shadow-md)}
+.proj-card:active {cursor:grabbing}
+.proj-card.dragging {opacity:.4}
+.proj-etiqueta {height:8px;width:42px;border-radius:999px;margin-bottom:8px}
+.proj-card-titulo {font-size:.85rem;font-weight:600;color:var(--navy-800);word-break:break-word;line-height:1.35}
+.proj-card-meta {display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px}
+.proj-card-resp {
+  font-size:.68rem;font-weight:700;color:#fff;
+  border-radius:999px;padding:2px 8px;white-space:nowrap;
+}
+.proj-add-card {
+  background:none;border:1px dashed var(--gray-300);border-radius:8px;
+  padding:7px;font-family:var(--font);font-size:.78rem;font-weight:600;
+  color:var(--gray-500);cursor:pointer;transition:border-color .15s,color .15s;
+}
+.proj-add-card:hover {border-color:var(--navy-400);color:var(--navy-600)}
+.proj-board-vazio {
+  border:1px dashed var(--gray-300);border-radius:12px;
+  padding:34px 20px;text-align:center;color:var(--gray-400);font-size:.87rem;width:100%;
+}
+.proj-cor-opcao {
+  width:26px;height:26px;border-radius:50%;cursor:pointer;
+  border:2px solid transparent;padding:0;flex-shrink:0;
+}
+.proj-cor-opcao.sel {border-color:var(--navy-800);box-shadow:0 0 0 2px var(--white) inset}
 </style>
 </head>
 <body>
@@ -493,6 +545,7 @@ select.status-select {
       <button class="tab-btn" data-tab="entregas" onclick="switchTab('entregas')">Entregas</button>
       <button class="tab-btn" data-tab="funcionarios" onclick="switchTab('funcionarios')">Funcionários</button>
       <button class="tab-btn" data-tab="secretaria" onclick="switchTab('secretaria')">Secretaria</button>
+      <button class="tab-btn" data-tab="projetos" onclick="switchTab('projetos')">Projetos</button>
       <button class="tab-btn" data-tab="minhasFerias" onclick="switchTab('minhasFerias')">Minhas Férias</button>
     </div>
 
@@ -741,6 +794,23 @@ select.status-select {
       </div>
     </div>
 
+    <!-- ══════════════ PROJETOS ══════════════ -->
+    <div id="tabProjetos" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <div>
+            <div class="card-title" style="margin-bottom:2px">Projetos</div>
+            <div class="card-sub" style="margin:0">Arraste os cartões entre as colunas para mudar o andamento</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-ghost" onclick="abrirColunaModal_()">+ Nova coluna</button>
+            <button class="btn" onclick="abrirCartaoModal_()">+ Novo cartão</button>
+          </div>
+        </div>
+        <div id="projBoard" class="proj-board"></div>
+      </div>
+    </div>
+
     <!-- ══════════════ MINHAS FÉRIAS ══════════════ -->
     <div id="tabMinhasFerias" class="tab-panel">
       <div id="minhasFeriasNaoVinculado" class="card" style="display:none">
@@ -795,15 +865,8 @@ select.status-select {
       </div>
     </div>
     <label class="modal-label">Categoria</label>
-    <select id="evCategoria" class="modal-select">
-      <option value="OPERACIONAL">OPERACIONAL</option>
-      <option value="BRASAS_START">BRASAS_START</option>
-      <option value="BRASAS_DAY">BRASAS_DAY</option>
-      <option value="SPECIAL_CLASSES">SPECIAL_CLASSES</option>
-      <option value="RECESSO">RECESSO</option>
-      <option value="TREINAMENTO">TREINAMENTO</option>
-      <option value="EVENTO">EVENTO</option>
-    </select>
+    <select id="evCategoria" class="modal-select" onchange="onEvCategoriaChange_()"></select>
+    <input id="evCategoriaNova" class="modal-input" type="text" placeholder="Digite o nome da nova categoria" style="display:none;margin-top:8px">
     <label class="modal-label">Observação (opcional)</label>
     <textarea id="evObservacao" class="modal-textarea"></textarea>
     <div id="eventoModalStatus" class="modal-status"></div>
@@ -903,8 +966,8 @@ select.status-select {
     <div class="modal-row">
       <div>
         <label class="modal-label">Tipo</label>
-        <input id="ajTipo" class="modal-input" type="text" list="ajTipoList" placeholder="Troca, Atraso, Falta, Hora Extra…">
-        <datalist id="ajTipoList"></datalist>
+        <select id="ajTipo" class="modal-select" onchange="onAjTipoChange_()"></select>
+        <input id="ajTipoNovo" class="modal-input" type="text" placeholder="Digite o novo tipo" style="display:none;margin-top:8px">
       </div>
       <div>
         <label class="modal-label">Data</label>
@@ -980,7 +1043,7 @@ select.status-select {
   <div class="modal-card">
     <div class="modal-title" id="feriaModalTitle">Novo período de férias</div>
     <label class="modal-label">Pessoa</label>
-    <input id="fePessoa" class="modal-input" type="text" list="fePessoaList">
+    <input id="fePessoa" class="modal-input" type="text" list="fePessoaList" oninput="popularFePeriodoSelect_()" onchange="popularFePeriodoSelect_()">
     <datalist id="fePessoaList"></datalist>
     <div class="modal-row">
       <div>
@@ -992,6 +1055,8 @@ select.status-select {
         <input id="feDataFim" class="modal-input" type="date">
       </div>
     </div>
+    <label class="modal-label">Abater do período aquisitivo</label>
+    <select id="fePeriodoAquisitivo" class="modal-select"></select>
     <label class="modal-label">Observação (opcional)</label>
     <textarea id="feObservacao" class="modal-textarea"></textarea>
     <div id="feriaModalStatus" class="modal-status"></div>
@@ -1059,10 +1124,15 @@ select.status-select {
       </div>
       <div>
         <label class="modal-label">Fim do período aquisitivo</label>
-        <input id="paDataFim" class="modal-input" type="date">
+        <input id="paDataFim" class="modal-input" type="date" onchange="atualizarPaLimite_()" oninput="atualizarPaLimite_()">
       </div>
     </div>
-    <div style="font-size:.75rem;color:var(--gray-500);margin-top:6px">A data limite de gozo é calculada automaticamente: 12 meses após o fim do período aquisitivo.</div>
+    <label class="modal-label">Data limite de gozo</label>
+    <input id="paDataLimiteGozo" class="modal-input" type="date" oninput="onPaLimiteEditado_()">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <div style="font-size:.75rem;color:var(--gray-500)">Preenchida automaticamente (11 meses após o fim do período aquisitivo), mas você pode alterar.</div>
+      <button type="button" class="btn-ghost btn-sm" id="paRecalcularBtn" style="display:none;white-space:nowrap" onclick="recalcularPaLimite_()">Recalcular</button>
+    </div>
     <div id="periodoAquisitivoModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="paDeleteBtn" style="display:none;color:#fff" onclick="excluirPeriodoAquisitivo_()">Excluir</button>
@@ -1084,6 +1154,22 @@ select.status-select {
     <div class="modal-actions">
       <button class="btn-ghost" onclick="fecharModal('trackModal')">Cancelar</button>
       <button class="btn" onclick="salvarTrack_()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Aprovar solicitação de férias ── -->
+<div id="aprovarSolicitacaoModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title">Aprovar solicitação de férias</div>
+    <div id="apResumo" class="card-sub" style="margin:14px 0 0"></div>
+    <label class="modal-label">Abater do período aquisitivo</label>
+    <select id="apPeriodoAquisitivo" class="modal-select"></select>
+    <div style="font-size:.75rem;color:var(--gray-500);margin-top:6px">Aprovar registra o período no histórico de férias tiradas da pessoa. Escolha de qual período aquisitivo os dias saem.</div>
+    <div id="aprovarSolicitacaoModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="fecharModal('aprovarSolicitacaoModal')">Cancelar</button>
+      <button class="btn" onclick="confirmarAprovacao_()">Aprovar</button>
     </div>
   </div>
 </div>
@@ -1112,6 +1198,65 @@ select.status-select {
   </div>
 </div>
 
+<!-- ── Modal: Coluna do quadro de projetos ── -->
+<div id="colunaModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="colunaModalTitle">Nova coluna</div>
+    <label class="modal-label">Nome da coluna</label>
+    <input id="colNome" class="modal-input" type="text" placeholder="Ex: A fazer, Em andamento, Concluído…">
+    <div id="colunaModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="colDeleteBtn" style="display:none;color:#fff" onclick="excluirColuna_()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('colunaModal')">Cancelar</button>
+      <button class="btn" onclick="salvarColuna_()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Cartão de projeto ── -->
+<div id="cartaoModal" class="modal-backdrop">
+  <div class="modal-card modal-card-lg">
+    <div class="modal-title" id="cartaoModalTitle">Novo cartão</div>
+    <label class="modal-label">Título</label>
+    <input id="pcTitulo" class="modal-input" type="text" placeholder="Nome do projeto">
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Coluna</label>
+        <select id="pcColuna" class="modal-select"></select>
+      </div>
+      <div>
+        <label class="modal-label">Prazo <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <input id="pcPrazo" class="modal-input" type="date">
+      </div>
+    </div>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Etiqueta <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <select id="pcEtiqueta" class="modal-select" onchange="onPcEtiquetaChange_()"></select>
+      </div>
+      <div>
+        <label class="modal-label">Responsável <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <input id="pcResponsavel" class="modal-input" type="text" list="pcResponsavelList">
+        <datalist id="pcResponsavelList"></datalist>
+      </div>
+    </div>
+    <div id="pcEtiquetaNovaWrap" style="display:none">
+      <label class="modal-label">Nome da nova etiqueta</label>
+      <input id="pcEtiquetaNova" class="modal-input" type="text" placeholder="Ex: Marketing, Urgente, RH…">
+      <label class="modal-label">Cor</label>
+      <div id="pcCores" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <label class="modal-label">Descrição <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+    <textarea id="pcDescricao" class="modal-textarea" placeholder="Detalhes, links, próximos passos…"></textarea>
+    <div id="cartaoModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="pcDeleteBtn" style="display:none;color:#fff" onclick="excluirCartao_()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('cartaoModal')">Cancelar</button>
+      <button class="btn" onclick="salvarCartao_()">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Modal: Checklist de admissão ── -->
 <div id="checklistModal" class="modal-backdrop">
   <div class="modal-card modal-card-lg">
@@ -1136,7 +1281,7 @@ var CATEGORIA_COR = {
   OPERACIONAL:'#2a4d76'
 };
 
-var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, funcionariosRH:[], minhasFerias:null, solicitacoes:[], calView:'month', calRefDate:new Date(), escRefDate:new Date() };
+var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, funcionariosRH:[], minhasFerias:null, solicitacoes:[], projetos:null, calView:'month', calRefDate:new Date(), escRefDate:new Date() };
 
 // ── INIT ──────────────────────────────────────────────
 // Funcionário comum só enxerga Dashboard, Rotinas e Minhas Férias — as
@@ -1184,7 +1329,10 @@ function loadFuncionariosRH() {
     .getFuncionariosRH(TOKEN);
 }
 function loadSolicitacoes() {
-  google.script.run.withSuccessHandler(function(d){ state.solicitacoes = d; onAllLoaded(); }).withFailureHandler(showError).getSolicitacoes(TOKEN);
+  google.script.run.withSuccessHandler(function(d){ state.solicitacoes = d; loadProjetos(); }).withFailureHandler(showError).getSolicitacoes(TOKEN);
+}
+function loadProjetos() {
+  google.script.run.withSuccessHandler(function(d){ state.projetos = d; onAllLoaded(); }).withFailureHandler(showError).getProjetosPagina(TOKEN);
 }
 
 function onAllLoaded() {
@@ -1198,6 +1346,7 @@ function onAllLoaded() {
     renderSecretaria();
     renderFuncionariosPagina();
     renderSolicitacoesSub_();
+    renderProjetos();
   }
   hideAll();
   document.getElementById('screenMain').style.display = 'flex';
@@ -1205,7 +1354,7 @@ function onAllLoaded() {
 
 // ── TABS ──────────────────────────────────────────────
 
-var ABAS_ADMIN_ = ['calendario', 'entregas', 'funcionarios', 'secretaria'];
+var ABAS_ADMIN_ = ['calendario', 'entregas', 'funcionarios', 'secretaria', 'projetos'];
 
 function aplicarPermissoesNav_() {
   if (state.user.isAdmin) return;
@@ -1218,7 +1367,7 @@ function aplicarPermissoesNav_() {
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
   document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria', minhasFerias:'tabMinhasFerias' };
+  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria', projetos:'tabProjetos', minhasFerias:'tabMinhasFerias' };
   document.getElementById(map[tab]).classList.add('active');
 }
 
@@ -1468,6 +1617,36 @@ function renderCalendarioDia() {
 
 var eventoEditId = null;
 
+var CATEGORIA_BASE_ = ['OPERACIONAL', 'BRASAS_START', 'BRASAS_DAY', 'SPECIAL_CLASSES', 'RECESSO', 'TREINAMENTO', 'EVENTO'];
+
+function listaCategoriasEvento_() {
+  var extrasSet = {};
+  (state.eventos || []).forEach(function(e) {
+    if (e.categoria && e.categoria !== 'FERIAS' && CATEGORIA_BASE_.indexOf(e.categoria) === -1) extrasSet[e.categoria] = true;
+  });
+  return CATEGORIA_BASE_.concat(Object.keys(extrasSet).sort());
+}
+
+// Popula o <select> de Categoria com as categorias conhecidas (base + já
+// usadas) mais uma opção "+ Adicionar nova categoria…", que revela um campo
+// de texto livre pra cadastrar uma categoria que ainda não existe.
+function popularEvCategoriaSelect_(valorAtual) {
+  var categorias = listaCategoriasEvento_();
+  if (valorAtual && categorias.indexOf(valorAtual) === -1) categorias.push(valorAtual);
+  var sel = document.getElementById('evCategoria');
+  sel.innerHTML = categorias.map(function(c) {
+    return '<option value="' + esc(c) + '">' + esc(c) + '</option>';
+  }).join('') + '<option value="__nova__">+ Adicionar nova categoria…</option>';
+  sel.value = valorAtual || 'OPERACIONAL';
+}
+
+function onEvCategoriaChange_() {
+  var ehNova = document.getElementById('evCategoria').value === '__nova__';
+  var campo = document.getElementById('evCategoriaNova');
+  campo.style.display = ehNova ? '' : 'none';
+  if (ehNova) campo.focus();
+}
+
 function abrirEventoModal(id) {
   eventoEditId = id || null;
   var e = id ? state.eventos.filter(function(x){ return x.id===id; })[0] : null;
@@ -1475,7 +1654,9 @@ function abrirEventoModal(id) {
   document.getElementById('evTitulo').value = e ? e.titulo : '';
   document.getElementById('evDataInicio').value = e ? e.dataInicio : '';
   document.getElementById('evDataFim').value = e ? e.dataFim : '';
-  document.getElementById('evCategoria').value = e ? e.categoria : 'OPERACIONAL';
+  popularEvCategoriaSelect_(e ? e.categoria : 'OPERACIONAL');
+  document.getElementById('evCategoriaNova').value = '';
+  document.getElementById('evCategoriaNova').style.display = 'none';
   document.getElementById('evObservacao').value = e ? e.observacao : '';
   document.getElementById('eventoModalStatus').textContent = '';
   document.getElementById('evDeleteBtn').style.display = e ? '' : 'none';
@@ -1487,12 +1668,16 @@ function salvarEvento() {
   var status = document.getElementById('eventoModalStatus');
   if (!titulo) { status.textContent = 'Informe o título.'; status.className = 'modal-status error'; return; }
 
+  var categoriaSel = document.getElementById('evCategoria').value;
+  var categoria = categoriaSel === '__nova__' ? document.getElementById('evCategoriaNova').value.trim() : categoriaSel;
+  if (!categoria) { status.textContent = 'Informe o nome da nova categoria.'; status.className = 'modal-status error'; return; }
+
   var payload = {
     id: eventoEditId,
     titulo: titulo,
     dataInicio: document.getElementById('evDataInicio').value,
     dataFim: document.getElementById('evDataFim').value,
-    categoria: document.getElementById('evCategoria').value,
+    categoria: categoria,
     observacao: document.getElementById('evObservacao').value.trim()
   };
 
@@ -1689,7 +1874,7 @@ function renderEntregas() {
       var r = rows.filter(function(x) { return x.atividade === at && x.mes === mes; })[0];
       var val = r ? r.status : '';
       cells += '<td class="num"><select class="status-select" style="' + statusColorStyle(val) + '" ' +
-        'onchange="onEntregaStatusChange(\'' + esc(at) + '\',' + mes + ',' + ano + ',this)">' +
+        'onchange="onEntregaStatusChange(\'' + escJs_(at) + '\',' + mes + ',' + ano + ',this)">' +
         statusOptionsHtml(val) +
         '</select></td>';
     }
@@ -1758,7 +1943,7 @@ function renderCadastroSub_() {
         '<td>' + (f.dataAdmissao ? fmtDataBR(f.dataAdmissao) : '—') + '</td>' +
         '<td>' + (f.dataDemissao ? fmtDataBR(f.dataDemissao) : '—') + '</td>' +
         '<td>' + badge_(f.rastreadoFerias, 'Férias') + badge_(f.rastreadoAdmissao, 'Admissão') + badge_(f.rastreadoDemissao, 'Demissão') + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(f.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + escJs_(f.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum funcionário cadastrado ainda.</td></tr>') +
     '</tbody>';
 }
@@ -1798,17 +1983,25 @@ function renderFeriasSub_() {
       } else {
         restanteHtml = '<span class="status-pill ' + (r.diasRestantes > 0 ? 'no-prazo' : 'vazio') + '">' + r.diasRestantes + ' dias</span>';
       }
+      var nomeJs = escJs_(r.nome);
+      // Cada linha desta tabela É um período aquisitivo, então o lápis edita
+      // o período (ou cadastra um, quando a linha ainda é o placeholder "sem
+      // período"). Editar o cadastro da pessoa em si é na sub-aba Cadastro.
+      var btnNovoPeriodo = '<button class="rot-edit-btn" onclick="abrirPeriodoAquisitivoModal_(null,\'' + nomeJs + '\')" title="' + (r.id ? 'Adicionar outro período aquisitivo' : 'Cadastrar período aquisitivo') + '">&#43;</button>';
+      var btnPeriodo = r.id
+        ? '<button class="rot-edit-btn" onclick="abrirPeriodoAquisitivoModal_(\'' + escJs_(r.id) + '\',\'' + nomeJs + '\')" title="Editar período aquisitivo">&#9998;</button>' + btnNovoPeriodo
+        : btnNovoPeriodo;
       return '<tr' + (urgente ? ' style="background:var(--danger-100)"' : '') + '>' +
-        '<td><span class="nome-link" onclick="abrirSidebarFerias_(\'' + esc(r.nome) + '\')">' + esc(r.nome) + '</span></td>' +
+        '<td><span class="nome-link" onclick="abrirSidebarFerias_(\'' + nomeJs + '\')">' + esc(r.nome) + '</span></td>' +
         '<td>' + esc(r.funcao || '—') + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
         '<td>' + periodoTxt + '</td>' +
         '<td>' + limiteHtml + '</td>' +
         '<td class="num">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</td>' +
         '<td class="num">' + restanteHtml + '</td>' +
-        '<td>' +
-          '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\', true)" title="Editar funcionário">&#9998;</button>' +
-          '<button class="rot-edit-btn" onclick="removerTrack_(\'' + esc(r.nome) + '\', \'ferias\')" title="Remover desta lista">&#10005;</button>' +
+        '<td style="white-space:nowrap">' +
+          btnPeriodo +
+          '<button class="rot-edit-btn" onclick="removerTrack_(\'' + nomeJs + '\', \'ferias\')" title="Remover desta lista">&#10005;</button>' +
         '</td></tr>';
     }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa adicionada ainda.</td></tr>') +
     '</tbody>';
@@ -1824,6 +2017,13 @@ function renderFeriasSub_() {
 
 var _feriasSidebarNome = null;
 
+// Um "período" sem datas é o placeholder que o backend devolve quando a
+// pessoa ainda não tem nenhum período aquisitivo cadastrado — serve pra
+// linha da tabela dizer "sem período cadastrado", mas não deve virar card.
+function ehPeriodoPlaceholder_(p) {
+  return !p.id && !p.periodoAquisitivoInicio;
+}
+
 function periodoAquisitivoCardHtml_(p, somenteLeitura) {
   var urgente = periodoUrgente_(p);
   var periodoTxt = p.periodoAquisitivoInicio ? (fmtDataBR(p.periodoAquisitivoInicio) + ' – ' + fmtDataBR(p.periodoAquisitivoFim)) : '—';
@@ -1831,8 +2031,8 @@ function periodoAquisitivoCardHtml_(p, somenteLeitura) {
   var restanteTxt = p.diasRestantes === null
     ? 'Nenhum período aquisitivo cadastrado'
     : p.diasRestantes + ' dias';
-  var editBtn = (p.manual && !somenteLeitura)
-    ? '<button class="rot-edit-btn" onclick="abrirPeriodoAquisitivoModal_(\'' + p.id + '\')" title="Editar período aquisitivo">&#9998;</button>'
+  var editBtn = (p.id && !somenteLeitura)
+    ? '<button class="rot-edit-btn" onclick="abrirPeriodoAquisitivoModal_(\'' + escJs_(p.id) + '\',\'' + escJs_(p.nome || window._feriasSidebarNome || '') + '\')" title="Editar período aquisitivo">&#9998;</button>'
     : '';
   var destaque = urgente ? ' style="color:var(--danger-600)"' : '';
   return '<div class="ferias-ciclo-card' + (urgente ? ' urgente' : '') + '" style="margin-bottom:10px">' +
@@ -1840,7 +2040,9 @@ function periodoAquisitivoCardHtml_(p, somenteLeitura) {
         '<div><div class="ferias-ciclo-label">Período aquisitivo</div><div class="ferias-ciclo-value">' + periodoTxt + '</div></div>' +
         editBtn +
       '</div>' +
-      '<div class="ferias-ciclo-full"><div class="ferias-ciclo-label">Data limite de gozo</div><div class="ferias-ciclo-value"' + destaque + '>' + limiteTxt + '</div></div>' +
+      '<div class="ferias-ciclo-full"><div class="ferias-ciclo-label">Data limite de gozo</div><div class="ferias-ciclo-value"' + destaque + '>' + limiteTxt +
+        (p.limiteCustomizado ? ' <span style="font-size:.65rem;font-weight:700;background:var(--warning-100);color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;vertical-align:middle">definida à mão</span>' : '') +
+      '</div></div>' +
       '<div><div class="ferias-ciclo-label">Dias tirados</div><div class="ferias-ciclo-value">' + (p.diasTirados === null ? '—' : p.diasTirados) + '</div></div>' +
       '<div><div class="ferias-ciclo-label">Dias restantes</div><div class="ferias-ciclo-value"' + destaque + '>' + restanteTxt + '</div></div>' +
     '</div>';
@@ -1849,9 +2051,12 @@ function periodoAquisitivoCardHtml_(p, somenteLeitura) {
 function abrirSidebarFerias_(nome) {
   window._feriasSidebarNome = nome;
   var f = state.ferias;
-  var r = (f.resumo || []).filter(function(x){ return x.nome === nome; })[0];
-  var periodosAquisitivos = (f.feriasSaldos || []).filter(function(x){ return x.nome === nome; });
-  var periodos = (f.ferias || []).filter(function(x){ return x.pessoa === nome; });
+  var k = normNome_(nome);
+  var r = (f.resumo || []).filter(function(x){ return normNome_(x.nome) === k; })[0];
+  var periodosAquisitivos = (f.feriasSaldos || []).filter(function(x){
+    return normNome_(x.nome) === k && !ehPeriodoPlaceholder_(x);
+  });
+  var periodos = (f.ferias || []).filter(function(x){ return normNome_(x.pessoa) === k; });
   periodos.sort(function(a,b){ return b.dataInicio > a.dataInicio ? 1 : -1; });
 
   document.getElementById('feriasSidebarNome').textContent = nome;
@@ -1864,23 +2069,30 @@ function abrirSidebarFerias_(nome) {
     '<div class="ferias-sidebar-section">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
         '<div class="ferias-sidebar-section-title" style="margin:0">Períodos aquisitivos</div>' +
-        '<button class="btn-ghost btn-sm" onclick="abrirPeriodoAquisitivoModal_()">+ Adicionar</button>' +
+        '<button class="btn-ghost btn-sm" onclick="abrirPeriodoAquisitivoModal_(null,\'' + escJs_(nome) + '\')">+ Adicionar</button>' +
       '</div>' +
-      (periodosAquisitivos.length ? periodosAquisitivos.map(periodoAquisitivoCardHtml_).join('') :
-        '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período aquisitivo ainda.</div>') +
+      (periodosAquisitivos.length
+        ? periodosAquisitivos.map(function(p) { return periodoAquisitivoCardHtml_(p, false); }).join('')
+        : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período aquisitivo ainda.</div>') +
     '</div>';
 
   var periodosHtml =
     '<div class="ferias-sidebar-section">' +
       '<div class="ferias-sidebar-section-title">Histórico de férias tiradas (' + periodos.length + ')</div>' +
       (periodos.length ? periodos.map(function(x) {
+        // Sem período aquisitivo vinculado, esses dias aparecem no histórico
+        // mas não abatem saldo nenhum — precisa ficar visível, senão o total
+        // do histórico e o saldo divergem sem explicação.
+        var naoAbatido = !x.periodoAquisitivoId
+          ? ' <span class="status-pill pendente" style="font-size:.62rem;padding:1px 7px">não abatido</span>'
+          : '';
         return '<div class="ferias-periodo-item">' +
           '<div class="ferias-periodo-dates">' +
-            '<div class="ferias-periodo-range">' + fmtDataBR(x.dataInicio) + ' → ' + fmtDataBR(x.dataFim) + '</div>' +
+            '<div class="ferias-periodo-range">' + fmtDataBR(x.dataInicio) + ' → ' + fmtDataBR(x.dataFim) + naoAbatido + '</div>' +
             (x.observacao ? '<div class="ferias-periodo-obs">' + esc(x.observacao) + '</div>' : '') +
           '</div>' +
           '<div class="ferias-periodo-dias">' + x.dias + ' dias</div>' +
-          '<button class="rot-edit-btn" onclick="abrirFeriaModal(\'' + x.id + '\')" title="Editar">&#9998;</button>' +
+          '<button class="rot-edit-btn" onclick="abrirFeriaModal(\'' + escJs_(x.id) + '\')" title="Editar">&#9998;</button>' +
         '</div>';
       }).join('') : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período registrado ainda.</div>') +
     '</div>';
@@ -1897,14 +2109,57 @@ function fecharSidebarFerias_() {
 
 var periodoAquisitivoEditId = null;
 
-function abrirPeriodoAquisitivoModal_(id) {
+// Mesma regra do backend (MESES_ATE_LIMITE_GOZO_ no Code.gs). Aqui só pra
+// sugerir o valor enquanto a pessoa preenche — o backend recalcula ao salvar
+// e só guarda a data quando ela difere dessa sugestão.
+var MESES_ATE_LIMITE_GOZO_ = 11;
+
+function addMesesIso_(iso, meses) {
+  if (!iso) return '';
+  var p = iso.split('-');
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  d.setMonth(d.getMonth() + meses);
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+// Enquanto o usuário não editar a data limite à mão, ela acompanha o fim do
+// período aquisitivo. Depois de editada, para de ser sobrescrita (o botão
+// Recalcular devolve ao automático).
+var paLimiteManual = false;
+
+function limiteGozoSugerido_() {
+  return addMesesIso_(document.getElementById('paDataFim').value, MESES_ATE_LIMITE_GOZO_);
+}
+
+function atualizarPaLimite_() {
+  if (!paLimiteManual) document.getElementById('paDataLimiteGozo').value = limiteGozoSugerido_();
+  document.getElementById('paRecalcularBtn').style.display = paLimiteManual ? '' : 'none';
+}
+
+function onPaLimiteEditado_() {
+  paLimiteManual = true;
+  document.getElementById('paRecalcularBtn').style.display = '';
+}
+
+function recalcularPaLimite_() {
+  paLimiteManual = false;
+  atualizarPaLimite_();
+}
+
+// nome é passado explicitamente porque este modal também é aberto direto da
+// tabela de Férias (fora da sidebar), onde _feriasSidebarNome pode estar
+// vazio ou apontando pra outra pessoa aberta antes.
+function abrirPeriodoAquisitivoModal_(id, nome) {
   periodoAquisitivoEditId = id || null;
-  var nome = window._feriasSidebarNome;
   var p = id ? (state.ferias.periodosAquisitivos || []).filter(function(x){ return x.id === id; })[0] : null;
   document.getElementById('periodoAquisitivoModalTitle').textContent = id ? 'Editar período aquisitivo' : 'Novo período aquisitivo';
-  document.getElementById('paPessoa').value = nome || '';
+  document.getElementById('paPessoa').value = nome || (p && p.pessoa) || window._feriasSidebarNome || '';
   document.getElementById('paDataInicio').value = p ? p.dataInicio : '';
   document.getElementById('paDataFim').value = p ? p.dataFim : '';
+  // Só continua "manual" quem já tinha uma data limite escrita à mão.
+  paLimiteManual = !!(p && p.limiteCustomizado);
+  document.getElementById('paDataLimiteGozo').value = (p && p.dataLimiteGozo) || '';
+  atualizarPaLimite_();
   document.getElementById('periodoAquisitivoModalStatus').textContent = '';
   document.getElementById('paDeleteBtn').style.display = id ? '' : 'none';
   document.getElementById('periodoAquisitivoModal').classList.add('open');
@@ -1916,10 +2171,12 @@ function salvarPeriodoAquisitivo_() {
     id: periodoAquisitivoEditId,
     pessoa: document.getElementById('paPessoa').value,
     dataInicio: document.getElementById('paDataInicio').value,
-    dataFim: document.getElementById('paDataFim').value
+    dataFim: document.getElementById('paDataFim').value,
+    dataLimiteGozo: document.getElementById('paDataLimiteGozo').value
   };
   if (!payload.dataInicio || !payload.dataFim) { status.textContent = 'Informe início e fim.'; status.className = 'modal-status error'; return; }
   if (payload.dataFim < payload.dataInicio) { status.textContent = 'O fim não pode ser antes do início.'; status.className = 'modal-status error'; return; }
+  if (payload.dataLimiteGozo && payload.dataLimiteGozo < payload.dataFim) { status.textContent = 'A data limite de gozo não pode ser anterior ao fim do período aquisitivo.'; status.className = 'modal-status error'; return; }
   status.textContent = 'Salvando...'; status.className = 'modal-status';
   google.script.run
     .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); fecharModal('periodoAquisitivoModal'); showToast('Período aquisitivo salvo!', 'success'); })
@@ -1938,11 +2195,10 @@ function excluirPeriodoAquisitivo_() {
 
 function novoFeriaSidebarPessoa_() {
   abrirFeriaModal();
-  setTimeout(function() {
-    if (window._feriasSidebarNome) {
-      document.getElementById('fePessoa').value = window._feriasSidebarNome;
-    }
-  }, 30);
+  if (window._feriasSidebarNome) {
+    document.getElementById('fePessoa').value = window._feriasSidebarNome;
+    popularFePeriodoSelect_();
+  }
 }
 
 // ── MINHAS FÉRIAS (autoatendimento do funcionário) ─────
@@ -1970,9 +2226,10 @@ function renderMinhasFerias() {
   if (m.dataAdmissao) sub.push('Admissão: ' + fmtDataBR(m.dataAdmissao));
   document.getElementById('mfSub').textContent = sub.join(' · ');
 
-  document.getElementById('mfPeriodos').innerHTML = (m.saldos || []).length
-    ? m.saldos.map(function(p) { return periodoAquisitivoCardHtml_(p, true); }).join('')
-    : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período aquisitivo ainda.</div>';
+  var meusPeriodos = (m.saldos || []).filter(function(p) { return !ehPeriodoPlaceholder_(p); });
+  document.getElementById('mfPeriodos').innerHTML = meusPeriodos.length
+    ? meusPeriodos.map(function(p) { return periodoAquisitivoCardHtml_(p, true); }).join('')
+    : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período aquisitivo cadastrado ainda. Fale com o administrador.</div>';
 
   var sol = m.solicitacoes || [];
   document.getElementById('mfSolicitacoesTable').innerHTML =
@@ -2058,7 +2315,7 @@ function checklistCellsHtml_(nome, processo, itens) {
   return itens.map(function(item) {
     var status = checklistStatusPara_(nome, processo, item);
     return '<td class="num"><select class="status-select" style="' + checklistCellStyle_(status) + ';min-width:90px" ' +
-      'onchange="onChecklistCellChange_(this,\'' + esc(nome) + '\',\'' + processo + '\',\'' + esc(item) + '\')">' +
+      'onchange="onChecklistCellChange_(this,\'' + escJs_(nome) + '\',\'' + processo + '\',\'' + escJs_(item) + '\')">' +
       '<option value=""' + (status === '' ? ' selected' : '') + '>—</option>' +
       '<option value="Feito"' + (status === 'Feito' ? ' selected' : '') + '>Feito</option>' +
       '<option value="Pendente"' + (status === 'Pendente' ? ' selected' : '') + '>Pendente</option>' +
@@ -2089,8 +2346,8 @@ function renderAdmissaoSub_() {
       '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
       checklistCellsHtml_(r.nome, 'ADMISSAO', itens) +
       '<td>' +
-        '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\', true)" title="Editar">&#9998;</button>' +
-        '<button class="rot-edit-btn" onclick="removerTrack_(\'' + esc(r.nome) + '\', \'admissao\')" title="Remover desta lista">&#10005;</button>' +
+        '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + escJs_(r.nome) + '\', true)" title="Editar">&#9998;</button>' +
+        '<button class="rot-edit-btn" onclick="removerTrack_(\'' + escJs_(r.nome) + '\', \'admissao\')" title="Remover desta lista">&#10005;</button>' +
       '</td></tr>';
   }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum resultado.</td></tr>') + '</tbody>';
   document.getElementById('admissaoTable').innerHTML = thead + tbody;
@@ -2171,8 +2428,8 @@ function renderDemissaoSub_() {
       '<td>' + (r.dataDemissao ? fmtDataBR(r.dataDemissao) : '—') + '</td>' +
       checklistCellsHtml_(r.nome, 'DEMISSAO', itens) +
       '<td>' +
-        '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\', true)" title="Editar">&#9998;</button>' +
-        '<button class="rot-edit-btn" onclick="removerTrack_(\'' + esc(r.nome) + '\', \'demissao\')" title="Remover desta lista">&#10005;</button>' +
+        '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + escJs_(r.nome) + '\', true)" title="Editar">&#9998;</button>' +
+        '<button class="rot-edit-btn" onclick="removerTrack_(\'' + escJs_(r.nome) + '\', \'demissao\')" title="Remover desta lista">&#10005;</button>' +
       '</td></tr>';
   }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum resultado.</td></tr>') + '</tbody>';
   document.getElementById('demissaoTable').innerHTML = thead + tbody;
@@ -2212,16 +2469,32 @@ function renderSolicitacoesSub_() {
     '</tbody>';
 }
 
+var solicitacaoAprovandoId = null;
+
 function aprovarSolicitacao_(id) {
-  if (!window.confirm('Aprovar esta solicitação de férias? Isso já registra o período como férias tiradas (conta no saldo).')) return;
+  var s = (state.solicitacoes || []).filter(function(x) { return x.id === id; })[0];
+  if (!s) return;
+  solicitacaoAprovandoId = id;
+  document.getElementById('apResumo').textContent =
+    s.pessoa + ' · ' + fmtDataBR(s.dataInicio) + ' – ' + fmtDataBR(s.dataFim) + ' · ' + s.dias + ' dias';
+  document.getElementById('apPeriodoAquisitivo').innerHTML = opcoesPeriodoAquisitivo_(s.pessoa, '');
+  document.getElementById('aprovarSolicitacaoModalStatus').textContent = '';
+  document.getElementById('aprovarSolicitacaoModal').classList.add('open');
+}
+
+function confirmarAprovacao_() {
+  if (!solicitacaoAprovandoId) return;
+  var status = document.getElementById('aprovarSolicitacaoModalStatus');
+  status.textContent = 'Aprovando...'; status.className = 'modal-status';
   google.script.run
     .withSuccessHandler(function(d) {
       state.solicitacoes = d;
       renderSolicitacoesSub_();
+      fecharModal('aprovarSolicitacaoModal');
       recarregarFerias_(function() { showToast('Solicitação aprovada!', 'success'); });
     })
-    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
-    .aprovarSolicitacao(TOKEN, id);
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .aprovarSolicitacao(TOKEN, solicitacaoAprovandoId, document.getElementById('apPeriodoAquisitivo').value);
 }
 
 function recusarSolicitacao_(id) {
@@ -2243,6 +2516,25 @@ function pessoasConhecidasFerias_() {
 
 var feriaEditId = null;
 
+// Lista os períodos aquisitivos de uma pessoa como <option>s, pra escolher
+// de qual deles os dias vão ser abatidos. "Não abater" existe pra registrar
+// férias que não devem consumir saldo de nenhum período.
+function opcoesPeriodoAquisitivo_(nome, selecionado) {
+  var k = normNome_(nome);
+  var lista = (state.ferias.periodosAquisitivos || []).filter(function(p) { return normNome_(p.pessoa) === k; })
+    .sort(function(a, b) { return (a.dataInicio || '').localeCompare(b.dataInicio || ''); });
+  return '<option value=""' + (!selecionado ? ' selected' : '') + '>— não abater de nenhum período —</option>' +
+    lista.map(function(p) {
+      return '<option value="' + esc(p.id) + '"' + (p.id === selecionado ? ' selected' : '') + '>' +
+        fmtDataBR(p.dataInicio) + ' – ' + fmtDataBR(p.dataFim) + '</option>';
+    }).join('');
+}
+
+function popularFePeriodoSelect_(selecionado) {
+  document.getElementById('fePeriodoAquisitivo').innerHTML =
+    opcoesPeriodoAquisitivo_(document.getElementById('fePessoa').value.trim(), selecionado || '');
+}
+
 function abrirFeriaModal(id) {
   feriaEditId = id || null;
   var x = id ? state.ferias.ferias.filter(function(v){ return v.id===id; })[0] : null;
@@ -2251,6 +2543,7 @@ function abrirFeriaModal(id) {
   document.getElementById('feDataInicio').value = x ? x.dataInicio : '';
   document.getElementById('feDataFim').value = x ? x.dataFim : '';
   document.getElementById('feObservacao').value = x ? x.observacao : '';
+  popularFePeriodoSelect_(x ? x.periodoAquisitivoId : '');
   document.getElementById('feriaModalStatus').textContent = '';
   document.getElementById('feDeleteBtn').style.display = x ? '' : 'none';
   document.getElementById('feriaModal').classList.add('open');
@@ -2266,6 +2559,7 @@ function salvarFeria() {
 
   var payload = {
     id: feriaEditId, pessoa: pessoa, dataInicio: dataInicio, dataFim: dataFim,
+    periodoAquisitivoId: document.getElementById('fePeriodoAquisitivo').value,
     observacao: document.getElementById('feObservacao').value.trim()
   };
 
@@ -2453,7 +2747,7 @@ function renderSecretaria() {
     s.horarios.map(function(h) {
       return '<tr><td>' + esc(h.nome) + '</td><td>' + esc(h.horarioPadrao) + '</td><td>' + esc(h.horarioSexta) + '</td>' +
         '<td>' + (h.ativo ? '<span class="status-pill no-prazo">ATIVO</span>' : '<span class="status-pill vazio">INATIVO</span>') + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirHorarioModal(\'' + esc(h.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+        '<td><button class="rot-edit-btn" onclick="abrirHorarioModal(\'' + escJs_(h.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
     }).join('') + '</tbody>';
 
   renderEscalaSabado();
@@ -2476,14 +2770,18 @@ function ajusteTipoPill_(tipo) {
   return '<span class="status-pill ' + cls + '">' + esc(tipo || '—') + '</span>';
 }
 
-function renderAjustesFiltros_() {
-  var pessoasSet = {};
+function listaTiposAjuste_() {
   var tiposSet = {};
   AJUSTE_TIPOS_BASE_.forEach(function(t) { tiposSet[t] = true; });
+  (state.secretaria.ajustes || []).forEach(function(a) { if (a.tipo) tiposSet[a.tipo] = true; });
+  return Object.keys(tiposSet).sort();
+}
+
+function renderAjustesFiltros_() {
+  var pessoasSet = {};
   state.secretaria.ajustes.forEach(function(a) {
     if (a.quemSai) pessoasSet[a.quemSai] = true;
     if (a.quemCobre) pessoasSet[a.quemCobre] = true;
-    if (a.tipo) tiposSet[a.tipo] = true;
   });
   var sel = document.getElementById('ajPessoaFilter');
   var atual = sel.value;
@@ -2492,7 +2790,7 @@ function renderAjustesFiltros_() {
       return '<option value="' + esc(p) + '"' + (p === atual ? ' selected' : '') + '>' + esc(p) + '</option>';
     }).join('');
 
-  var tipos = Object.keys(tiposSet).sort();
+  var tipos = listaTiposAjuste_();
   var selTipo = document.getElementById('ajTipoFilter');
   var atualTipo = selTipo.value;
   selTipo.innerHTML = '<option value="">Todos os tipos</option>' +
@@ -2500,11 +2798,28 @@ function renderAjustesFiltros_() {
       return '<option value="' + esc(t) + '"' + (t === atualTipo ? ' selected' : '') + '>' + esc(t) + '</option>';
     }).join('');
 
-  document.getElementById('ajTipoList').innerHTML =
-    tipos.map(function(t) { return '<option value="' + esc(t) + '">'; }).join('');
-
   document.getElementById('ajPessoaList').innerHTML =
     getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
+}
+
+// Popula o <select> de Tipo do modal com os tipos conhecidos (base + já
+// usados) mais uma opção "+ Adicionar novo tipo…", que revela um campo de
+// texto livre pra cadastrar um tipo que ainda não existe.
+function popularAjTipoSelect_(valorAtual) {
+  var tipos = listaTiposAjuste_();
+  if (valorAtual && tipos.indexOf(valorAtual) === -1) tipos.push(valorAtual);
+  var sel = document.getElementById('ajTipo');
+  sel.innerHTML = tipos.map(function(t) {
+    return '<option value="' + esc(t) + '">' + esc(t) + '</option>';
+  }).join('') + '<option value="__novo__">+ Adicionar novo tipo…</option>';
+  sel.value = valorAtual || 'Troca';
+}
+
+function onAjTipoChange_() {
+  var ehNovo = document.getElementById('ajTipo').value === '__novo__';
+  var campoNovo = document.getElementById('ajTipoNovo');
+  campoNovo.style.display = ehNovo ? '' : 'none';
+  if (ehNovo) campoNovo.focus();
 }
 
 function limparFiltrosAjustes() {
@@ -2693,7 +3008,9 @@ function abrirAjusteModal(id) {
   ajusteEditId = id || null;
   var a = id ? state.secretaria.ajustes.filter(function(x){ return x.id===id; })[0] : null;
   document.getElementById('ajusteModalTitle').textContent = a ? 'Editar ajuste' : 'Novo ajuste';
-  document.getElementById('ajTipo').value = a ? a.tipo : 'Troca';
+  popularAjTipoSelect_(a ? a.tipo : 'Troca');
+  document.getElementById('ajTipoNovo').value = '';
+  document.getElementById('ajTipoNovo').style.display = 'none';
   document.getElementById('ajData').value = a ? a.data : '';
   document.getElementById('ajQuemSai').value = a ? a.quemSai : '';
   document.getElementById('ajQuemCobre').value = a ? a.quemCobre : '';
@@ -2727,9 +3044,13 @@ function salvarAjusteModal() {
   if (!data) { status.textContent = 'Informe a data.'; status.className = 'modal-status error'; return; }
   if (!quemSai && !quemCobre) { status.textContent = 'Informe quem sai e/ou quem cobre.'; status.className = 'modal-status error'; return; }
 
+  var tipoSel = document.getElementById('ajTipo').value;
+  var tipo = tipoSel === '__novo__' ? document.getElementById('ajTipoNovo').value.trim() : tipoSel;
+  if (!tipo) { status.textContent = 'Informe o novo tipo.'; status.className = 'modal-status error'; return; }
+
   var payload = {
     id: ajusteEditId,
-    tipo: document.getElementById('ajTipo').value.trim(),
+    tipo: tipo,
     data: data,
     quemSai: quemSai,
     quemCobre: quemCobre,
@@ -2783,6 +3104,295 @@ function renderDashboardRefresh() {
   google.script.run.withSuccessHandler(function(d){ state.dashboard = d; renderDashboard(); }).withFailureHandler(function(){}).getDashboard(TOKEN);
 }
 
+// ── PROJETOS (quadro kanban) ──────────────────────────
+
+var PROJ_CORES_ = ['#1e3a5f', '#7c3aed', '#22c55e', '#f59e0b', '#ef4444', '#0891b2', '#ec4899', '#64748b'];
+
+function projPrazoPill_(prazo) {
+  var dias = diasAteLimite_(prazo);
+  var cls = dias === null ? 'vazio' : (dias < 0 ? 'em-atraso' : (dias <= 7 ? 'pendente' : 'vazio'));
+  var titulo = dias === null ? '' : (dias < 0 ? 'Atrasado' : (dias === 0 ? 'Vence hoje' : 'Vence em ' + dias + ' dia(s)'));
+  return '<span class="status-pill ' + cls + '" style="font-size:.66rem;padding:2px 8px" title="' + esc(titulo) + '">' + fmtDataBR(prazo) + '</span>';
+}
+
+function projCartaoHtml_(c) {
+  var etiqueta = c.etiqueta
+    ? '<div class="proj-etiqueta" style="background:' + esc(c.etiquetaCor || '#64748b') + '" title="' + esc(c.etiqueta) + '"></div>'
+    : '';
+  var meta = [];
+  if (c.responsavel) meta.push('<span class="proj-card-resp" style="background:' + corPessoa_(c.responsavel) + '">' + esc(c.responsavel) + '</span>');
+  if (c.prazo) meta.push(projPrazoPill_(c.prazo));
+  if (c.descricao) meta.push('<span title="Tem descrição" style="color:var(--gray-400)">&#9776;</span>');
+  return '<div class="proj-card" draggable="true" data-id="' + esc(c.id) + '"' +
+      ' ondragstart="projCardDragStart_(event,\'' + escJs_(c.id) + '\')" ondragend="projCardDragEnd_(event)"' +
+      ' onclick="abrirCartaoModal_(\'' + escJs_(c.id) + '\')">' +
+    etiqueta +
+    '<div class="proj-card-titulo">' + esc(c.titulo) + '</div>' +
+    (meta.length ? '<div class="proj-card-meta">' + meta.join('') + '</div>' : '') +
+  '</div>';
+}
+
+function renderProjetos() {
+  var p = state.projetos || { colunas: [], cartoes: [] };
+  var board = document.getElementById('projBoard');
+
+  if (!p.colunas.length) {
+    board.innerHTML = '<div class="proj-board-vazio">Nenhuma coluna ainda.<br>Comece criando as etapas do seu fluxo em <strong>+ Nova coluna</strong>.</div>';
+    return;
+  }
+
+  board.innerHTML = p.colunas.map(function(col, idx) {
+    var cards = p.cartoes.filter(function(c) { return c.colunaId === col.id; });
+    var colJs = escJs_(col.id);
+    var acoes =
+      '<button class="rot-edit-btn" onclick="moverColuna_(\'' + colJs + '\',-1)"' + (idx === 0 ? ' disabled style="opacity:.25"' : '') + ' title="Mover para a esquerda">&#8592;</button>' +
+      '<button class="rot-edit-btn" onclick="moverColuna_(\'' + colJs + '\',1)"' + (idx === p.colunas.length - 1 ? ' disabled style="opacity:.25"' : '') + ' title="Mover para a direita">&#8594;</button>' +
+      '<button class="rot-edit-btn" onclick="abrirColunaModal_(\'' + colJs + '\')" title="Renomear ou excluir">&#9998;</button>';
+
+    return '<div class="proj-col">' +
+        '<div class="proj-col-head">' +
+          '<div class="proj-col-nome">' + esc(col.nome) + '</div>' +
+          '<span class="proj-col-count">' + cards.length + '</span>' +
+          '<div class="proj-col-acoes">' + acoes + '</div>' +
+        '</div>' +
+        '<div class="proj-col-body" data-coluna="' + esc(col.id) + '"' +
+          ' ondragover="projColDragOver_(event)" ondragleave="projColDragLeave_(event)"' +
+          ' ondrop="projColDrop_(event,\'' + colJs + '\')">' +
+          (cards.length ? cards.map(projCartaoHtml_).join('') : '<div class="proj-col-vazia">Sem cartões</div>') +
+        '</div>' +
+        '<button class="proj-add-card" style="margin:0 10px 10px" onclick="abrirCartaoModal_(null,\'' + colJs + '\')">+ Adicionar cartão</button>' +
+      '</div>';
+  }).join('');
+}
+
+// ── Arrastar e soltar ──
+// O cartão é movido no próprio DOM durante o dragover (pra dar retorno visual
+// imediato); ao soltar, a ordem final é lida direto da tela e enviada inteira
+// pro backend, que só regrava os índices.
+
+var projDragId = null;
+
+function projCardDragStart_(ev, id) {
+  projDragId = id;
+  ev.dataTransfer.effectAllowed = 'move';
+  try { ev.dataTransfer.setData('text/plain', id); } catch (e) {}
+  ev.currentTarget.classList.add('dragging');
+}
+
+function projCardDragEnd_(ev) {
+  ev.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.proj-col-body.drag-over').forEach(function(el) { el.classList.remove('drag-over'); });
+}
+
+function projCartaoAntesDe_(container, y) {
+  var els = [].slice.call(container.querySelectorAll('.proj-card:not(.dragging)'));
+  var melhor = null, melhorOffset = Number.NEGATIVE_INFINITY;
+  els.forEach(function(el) {
+    var box = el.getBoundingClientRect();
+    var offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > melhorOffset) { melhorOffset = offset; melhor = el; }
+  });
+  return melhor;
+}
+
+function projColDragOver_(ev) {
+  if (!projDragId) return;
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'move';
+  var body = ev.currentTarget;
+  body.classList.add('drag-over');
+
+  var vazia = body.querySelector('.proj-col-vazia');
+  if (vazia) vazia.remove();
+
+  var arrastado = document.querySelector('.proj-card.dragging');
+  if (!arrastado) return;
+  var antesDe = projCartaoAntesDe_(body, ev.clientY);
+  if (antesDe) body.insertBefore(arrastado, antesDe);
+  else body.appendChild(arrastado);
+}
+
+function projColDragLeave_(ev) {
+  if (!ev.currentTarget.contains(ev.relatedTarget)) ev.currentTarget.classList.remove('drag-over');
+}
+
+function projColDrop_(ev, colunaId) {
+  ev.preventDefault();
+  ev.currentTarget.classList.remove('drag-over');
+  if (!projDragId) return;
+  var id = projDragId;
+  projDragId = null;
+  var ids = [].slice.call(ev.currentTarget.querySelectorAll('.proj-card')).map(function(el) { return el.getAttribute('data-id'); });
+  google.script.run
+    .withSuccessHandler(function(d) { state.projetos = d; renderProjetos(); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); renderProjetos(); })
+    .moverCartaoProjeto(TOKEN, id, colunaId, ids);
+}
+
+// ── Colunas ──
+
+var colunaEditId = null;
+
+function abrirColunaModal_(id) {
+  colunaEditId = id || null;
+  var col = id ? (state.projetos.colunas || []).filter(function(c) { return c.id === id; })[0] : null;
+  document.getElementById('colunaModalTitle').textContent = id ? 'Editar coluna' : 'Nova coluna';
+  document.getElementById('colNome').value = col ? col.nome : '';
+  document.getElementById('colunaModalStatus').textContent = '';
+  document.getElementById('colDeleteBtn').style.display = id ? '' : 'none';
+  document.getElementById('colunaModal').classList.add('open');
+}
+
+function salvarColuna_() {
+  var status = document.getElementById('colunaModalStatus');
+  var nome = document.getElementById('colNome').value.trim();
+  if (!nome) { status.textContent = 'Informe o nome da coluna.'; status.className = 'modal-status error'; return; }
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(d) { state.projetos = d; renderProjetos(); fecharModal('colunaModal'); showToast('Coluna salva!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .saveColunaProjeto(TOKEN, { id: colunaEditId, nome: nome });
+}
+
+function excluirColuna_() {
+  if (!colunaEditId) return;
+  if (!window.confirm('Excluir esta coluna?')) return;
+  var status = document.getElementById('colunaModalStatus');
+  google.script.run
+    .withSuccessHandler(function(d) { state.projetos = d; renderProjetos(); fecharModal('colunaModal'); showToast('Coluna excluída.', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .deleteColunaProjeto(TOKEN, colunaEditId);
+}
+
+function moverColuna_(id, direcao) {
+  var ids = (state.projetos.colunas || []).map(function(c) { return c.id; });
+  var i = ids.indexOf(id);
+  var j = i + direcao;
+  if (i === -1 || j < 0 || j >= ids.length) return;
+  ids.splice(j, 0, ids.splice(i, 1)[0]);
+  google.script.run
+    .withSuccessHandler(function(d) { state.projetos = d; renderProjetos(); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .reordenarColunasProjeto(TOKEN, ids);
+}
+
+// ── Cartões ──
+
+var cartaoEditId = null;
+var pcCorSelecionada = PROJ_CORES_[0];
+
+// Etiquetas não têm cadastro próprio: a lista oferecida é a das etiquetas já
+// usadas em algum cartão, mais a opção de criar uma nova na hora.
+function etiquetasConhecidas_() {
+  var mapa = {};
+  (state.projetos.cartoes || []).forEach(function(c) {
+    if (c.etiqueta && !mapa[c.etiqueta]) mapa[c.etiqueta] = c.etiquetaCor || '#64748b';
+  });
+  return Object.keys(mapa).sort().map(function(nome) { return { nome: nome, cor: mapa[nome] }; });
+}
+
+function renderPcCores_() {
+  document.getElementById('pcCores').innerHTML = PROJ_CORES_.map(function(cor) {
+    return '<button type="button" class="proj-cor-opcao' + (cor === pcCorSelecionada ? ' sel' : '') + '"' +
+      ' style="background:' + cor + '" onclick="selecionarPcCor_(\'' + cor + '\')" title="' + cor + '"></button>';
+  }).join('');
+}
+
+function selecionarPcCor_(cor) {
+  pcCorSelecionada = cor;
+  renderPcCores_();
+}
+
+function onPcEtiquetaChange_() {
+  var nova = document.getElementById('pcEtiqueta').value === '__nova__';
+  document.getElementById('pcEtiquetaNovaWrap').style.display = nova ? '' : 'none';
+  if (nova) {
+    renderPcCores_();
+    document.getElementById('pcEtiquetaNova').focus();
+  }
+}
+
+function abrirCartaoModal_(id, colunaId) {
+  var p = state.projetos || { colunas: [], cartoes: [] };
+  if (!p.colunas.length) { showToast('Crie uma coluna antes de adicionar cartões.', 'error'); return; }
+
+  cartaoEditId = id || null;
+  var c = id ? (p.cartoes || []).filter(function(x) { return x.id === id; })[0] : null;
+
+  document.getElementById('cartaoModalTitle').textContent = id ? 'Editar cartão' : 'Novo cartão';
+  document.getElementById('pcTitulo').value = c ? c.titulo : '';
+  document.getElementById('pcDescricao').value = c ? c.descricao : '';
+  document.getElementById('pcResponsavel').value = c ? c.responsavel : '';
+  document.getElementById('pcPrazo').value = c ? c.prazo : '';
+
+  document.getElementById('pcColuna').innerHTML = p.colunas.map(function(col) {
+    return '<option value="' + esc(col.id) + '">' + esc(col.nome) + '</option>';
+  }).join('');
+  document.getElementById('pcColuna').value = (c && c.colunaId) || colunaId || p.colunas[0].id;
+
+  var etiquetas = etiquetasConhecidas_();
+  var atual = c ? c.etiqueta : '';
+  document.getElementById('pcEtiqueta').innerHTML =
+    '<option value="">— sem etiqueta —</option>' +
+    etiquetas.map(function(e) {
+      return '<option value="' + esc(e.nome) + '" data-cor="' + esc(e.cor) + '"' + (e.nome === atual ? ' selected' : '') + '>' + esc(e.nome) + '</option>';
+    }).join('') +
+    '<option value="__nova__">+ Nova etiqueta…</option>';
+  document.getElementById('pcEtiquetaNova').value = '';
+  pcCorSelecionada = (c && c.etiquetaCor) || PROJ_CORES_[0];
+  onPcEtiquetaChange_();
+
+  document.getElementById('pcResponsavelList').innerHTML =
+    getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
+
+  document.getElementById('cartaoModalStatus').textContent = '';
+  document.getElementById('pcDeleteBtn').style.display = id ? '' : 'none';
+  document.getElementById('cartaoModal').classList.add('open');
+}
+
+function salvarCartao_() {
+  var status = document.getElementById('cartaoModalStatus');
+  var titulo = document.getElementById('pcTitulo').value.trim();
+  if (!titulo) { status.textContent = 'Informe o título.'; status.className = 'modal-status error'; return; }
+
+  var sel = document.getElementById('pcEtiqueta');
+  var etiqueta, etiquetaCor;
+  if (sel.value === '__nova__') {
+    etiqueta = document.getElementById('pcEtiquetaNova').value.trim();
+    etiquetaCor = pcCorSelecionada;
+    if (!etiqueta) { status.textContent = 'Informe o nome da nova etiqueta.'; status.className = 'modal-status error'; return; }
+  } else {
+    etiqueta = sel.value;
+    etiquetaCor = etiqueta ? (sel.options[sel.selectedIndex].getAttribute('data-cor') || '') : '';
+  }
+
+  var payload = {
+    id: cartaoEditId,
+    colunaId: document.getElementById('pcColuna').value,
+    titulo: titulo,
+    descricao: document.getElementById('pcDescricao').value.trim(),
+    responsavel: document.getElementById('pcResponsavel').value.trim(),
+    prazo: document.getElementById('pcPrazo').value,
+    etiqueta: etiqueta,
+    etiquetaCor: etiquetaCor
+  };
+
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(d) { state.projetos = d; renderProjetos(); fecharModal('cartaoModal'); showToast('Cartão salvo!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .saveCartaoProjeto(TOKEN, payload);
+}
+
+function excluirCartao_() {
+  if (!cartaoEditId) return;
+  if (!window.confirm('Excluir este cartão?')) return;
+  google.script.run
+    .withSuccessHandler(function(d) { state.projetos = d; renderProjetos(); fecharModal('cartaoModal'); showToast('Cartão excluído.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .deleteCartaoProjeto(TOKEN, cartaoEditId);
+}
+
 // ── UTILS ─────────────────────────────────────────────
 
 function statusPill(status) {
@@ -2803,6 +3413,19 @@ function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;')
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Pra valores que vão dentro de uma string JS num atributo onclick — esc()
+// sozinho não basta, porque não escapa a aspa simples que delimita a string
+// (um nome como "D'Ávila" quebraria o handler inteiro).
+function escJs_(s) {
+  return esc(String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+}
+
+// Mesma normalização do backend (norm_ no Code.gs): minúsculo, sem acento,
+// sem espaços nas bordas — pra front e back concordarem sobre quem é quem.
+function normNome_(s) {
+  return String(s == null ? '' : s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
 function show(id) {
