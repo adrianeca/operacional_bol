@@ -419,6 +419,7 @@ select.status-select {
 .ferias-ciclo-label {font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray-400);margin-bottom:3px}
 .ferias-ciclo-value {font-size:.88rem;font-weight:600;color:var(--navy-800)}
 .ferias-ciclo-full {grid-column:1/-1}
+.ferias-ciclo-card.urgente {background:var(--danger-100);border-color:#fecaca}
 .ferias-periodo-item {
   display:flex;align-items:center;gap:12px;
   padding:11px 0;border-bottom:1px solid var(--gray-100);
@@ -492,6 +493,7 @@ select.status-select {
       <button class="tab-btn" data-tab="entregas" onclick="switchTab('entregas')">Entregas</button>
       <button class="tab-btn" data-tab="funcionarios" onclick="switchTab('funcionarios')">Funcionários</button>
       <button class="tab-btn" data-tab="secretaria" onclick="switchTab('secretaria')">Secretaria</button>
+      <button class="tab-btn" data-tab="minhasFerias" onclick="switchTab('minhasFerias')">Minhas Férias</button>
     </div>
 
     <!-- ══════════════ DASHBOARD ══════════════ -->
@@ -590,9 +592,32 @@ select.status-select {
     <!-- ══════════════ FUNCIONÁRIOS ══════════════ -->
     <div id="tabFuncionarios" class="tab-panel">
       <div class="sub-tabs-nav">
+        <button class="sub-tab-btn" data-fsubtab="cadastro" onclick="switchFuncSubTab('cadastro')">Cadastro</button>
         <button class="sub-tab-btn active" data-fsubtab="ferias" onclick="switchFuncSubTab('ferias')">Férias</button>
         <button class="sub-tab-btn" data-fsubtab="admissao" onclick="switchFuncSubTab('admissao')">Admissão</button>
         <button class="sub-tab-btn" data-fsubtab="demissao" onclick="switchFuncSubTab('demissao')">Demissão</button>
+        <button class="sub-tab-btn" data-fsubtab="solicitacoes" onclick="switchFuncSubTab('solicitacoes')">Solicitações<span id="solicitacoesPendentesBadge" class="pill" style="background:var(--danger-500);margin-left:6px;display:none">0</span></button>
+      </div>
+
+      <div id="funcSubCadastro" class="sub-tab-panel">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <div class="card-title" style="margin-bottom:2px">Cadastro de Funcionários</div>
+              <div class="card-sub" style="margin:0">Lista mestre, sincronizada da planilha de RH (unidade ONLINE) · cadastrar aqui não inclui a pessoa em Férias, Admissão ou Demissão — isso é feito separadamente em cada aba</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-ghost" onclick="sincronizarRH_()">Sincronizar com RH</button>
+              <button class="btn" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
+            </div>
+          </div>
+          <div class="func-filtros">
+            <input id="cadNomeFiltro" class="modal-input" type="text" placeholder="Filtrar por nome…" oninput="renderCadastroSub_()" style="max-width:220px">
+          </div>
+          <div class="entregas-wrap">
+            <table class="data-table" id="cadastroTable"></table>
+          </div>
+        </div>
       </div>
 
       <div id="funcSubFerias" class="sub-tab-panel active">
@@ -603,7 +628,7 @@ select.status-select {
               <div class="card-sub" style="margin:0">Ciclo de 12 meses · 30 dias por ciclo concluído · clique no nome para ver o histórico</div>
             </div>
             <div style="display:flex;gap:8px">
-              <button class="btn btn-secondary" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
+              <button class="btn btn-secondary" onclick="abrirTrackModal_('ferias')">+ Adicionar pessoa</button>
               <button class="btn" onclick="abrirFeriaModal()">+ Novo período</button>
             </div>
           </div>
@@ -614,8 +639,8 @@ select.status-select {
       <div id="funcSubAdmissao" class="sub-tab-panel">
         <div class="card">
           <div class="section-head">
-            <div class="card-title" style="margin-bottom:0">Funcionários ativos</div>
-            <button class="btn" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
+            <div class="card-title" style="margin-bottom:0">Acompanhamento de admissão</div>
+            <button class="btn" onclick="abrirTrackModal_('admissao')">+ Adicionar pessoa</button>
           </div>
           <div class="func-filtros">
             <input id="admNomeFiltro" class="modal-input" type="text" placeholder="Filtrar por nome…" oninput="renderAdmissaoSub_()" style="max-width:220px">
@@ -632,7 +657,8 @@ select.status-select {
       <div id="funcSubDemissao" class="sub-tab-panel">
         <div class="card">
           <div class="section-head">
-            <div class="card-title" style="margin-bottom:0">Funcionários desligados</div>
+            <div class="card-title" style="margin-bottom:0">Acompanhamento de demissão</div>
+            <button class="btn" onclick="abrirTrackModal_('demissao')">+ Adicionar pessoa</button>
           </div>
           <div class="func-filtros">
             <input id="demNomeFiltro" class="modal-input" type="text" placeholder="Filtrar por nome…" oninput="renderDemissaoSub_()" style="max-width:220px">
@@ -642,6 +668,20 @@ select.status-select {
           </div>
           <div class="entregas-wrap">
             <table class="data-table" id="demissaoTable"></table>
+          </div>
+        </div>
+      </div>
+
+      <div id="funcSubSolicitacoes" class="sub-tab-panel">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <div class="card-title" style="margin-bottom:2px">Solicitações de férias</div>
+              <div class="card-sub" style="margin:0">Pedidos feitos pelos próprios funcionários na aba Minhas Férias</div>
+            </div>
+          </div>
+          <div class="entregas-wrap">
+            <table class="data-table" id="solicitacoesTable"></table>
           </div>
         </div>
       </div>
@@ -684,10 +724,13 @@ select.status-select {
           <input type="date" id="ajDataFilter" class="text-input" onchange="renderAjustes()">
           <select id="ajTipoFilter" class="select-input" onchange="renderAjustes()">
             <option value="">Todos os tipos</option>
-            <option value="Troca">Troca</option>
-            <option value="Cobertura">Cobertura</option>
-            <option value="Falta">Falta</option>
-            <option value="Horário pontual">Horário pontual</option>
+          </select>
+          <select id="ajStatusFilter" class="select-input" onchange="renderAjustes()">
+            <option value="">Todos os status</option>
+            <option value="Pendente">Pendente</option>
+            <option value="A Confirmar">A Confirmar</option>
+            <option value="Confirmado">Confirmado</option>
+            <option value="Realizado">Realizado</option>
           </select>
           <select id="ajPessoaFilter" class="select-input" onchange="renderAjustes()">
             <option value="">Todas as pessoas</option>
@@ -696,13 +739,37 @@ select.status-select {
         </div>
         <table class="data-table" id="ajustesTable"></table>
       </div>
+    </div>
 
-      <div class="card">
-        <div class="section-head">
-          <div class="card-title" style="margin-bottom:0">Horas extras</div>
-          <button class="btn btn-sm" onclick="abrirHoraExtraModal()">+ Nova hora extra</button>
+    <!-- ══════════════ MINHAS FÉRIAS ══════════════ -->
+    <div id="tabMinhasFerias" class="tab-panel">
+      <div id="minhasFeriasNaoVinculado" class="card" style="display:none">
+        <div class="card-title">Minhas Férias</div>
+        <div class="card-sub">Seu e-mail (<span id="mfEmailNaoVinculado"></span>) não está vinculado a nenhum funcionário no Cadastro. Peça pro administrador vincular seu e-mail lá.</div>
+      </div>
+      <div id="minhasFeriasConteudo">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <div class="card-title" style="margin-bottom:2px" id="mfNome">Minhas Férias</div>
+              <div class="card-sub" style="margin:0" id="mfSub"></div>
+            </div>
+            <button class="btn" onclick="abrirSolicitarFeriasModal_()">+ Solicitar férias</button>
+          </div>
+          <div id="mfPeriodos"></div>
         </div>
-        <table class="data-table" id="horasExtrasTable"></table>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">Minhas solicitações</div>
+          <div class="entregas-wrap">
+            <table class="data-table" id="mfSolicitacoesTable"></table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">Histórico de férias tiradas</div>
+          <div id="mfHistorico"></div>
+        </div>
       </div>
     </div>
 
@@ -836,12 +903,8 @@ select.status-select {
     <div class="modal-row">
       <div>
         <label class="modal-label">Tipo</label>
-        <select id="ajTipo" class="modal-select">
-          <option value="Troca">Troca</option>
-          <option value="Cobertura">Cobertura</option>
-          <option value="Falta">Falta</option>
-          <option value="Horário pontual">Horário pontual</option>
-        </select>
+        <input id="ajTipo" class="modal-input" type="text" list="ajTipoList" placeholder="Troca, Atraso, Falta, Hora Extra…">
+        <datalist id="ajTipoList"></datalist>
       </div>
       <div>
         <label class="modal-label">Data</label>
@@ -871,11 +934,21 @@ select.status-select {
     </div>
     <label class="modal-label">Status</label>
     <select id="ajStatus" class="modal-select">
-      <option value="A confirmar">A confirmar</option>
+      <option value="Pendente">Pendente</option>
+      <option value="A Confirmar">A Confirmar</option>
       <option value="Confirmado">Confirmado</option>
+      <option value="Realizado">Realizado</option>
     </select>
     <label class="modal-label">Observação <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
     <textarea id="ajAtividade" class="modal-textarea" placeholder="Detalhes extras, se precisar"></textarea>
+    <label class="modal-label">Anexo <span style="font-weight:400;color:var(--gray-400)">(atestado, documento etc. — opcional)</span></label>
+    <div id="ajAnexoAtualWrap" style="display:none;margin-bottom:8px;font-size:.83rem">
+      <a id="ajAnexoAtualLink" href="#" target="_blank" rel="noopener" style="color:var(--navy-600);text-decoration:underline"></a>
+      <label style="margin-left:12px;font-weight:400;color:var(--gray-500);cursor:pointer">
+        <input type="checkbox" id="ajRemoverAnexo"> remover anexo
+      </label>
+    </div>
+    <input id="ajAnexoFile" class="modal-input" type="file">
     <div id="ajusteModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="ajDeleteBtn" style="display:none;color:#fff" onclick="excluirAjuste()">Excluir</button>
@@ -885,40 +958,6 @@ select.status-select {
   </div>
 </div>
 
-<!-- ── Modal: Hora extra ── -->
-<div id="horaExtraModal" class="modal-backdrop">
-  <div class="modal-card">
-    <div class="modal-title" id="horaExtraModalTitle">Nova hora extra</div>
-    <label class="modal-label">Pessoa</label>
-    <input id="heNomePessoa" class="modal-input" type="text" list="heNomePessoaList">
-    <datalist id="heNomePessoaList"></datalist>
-    <div class="modal-row">
-      <div>
-        <label class="modal-label">Horas a pagar</label>
-        <input id="heHoras" class="modal-input" type="number" step="0.5" min="0" placeholder="Ex: 3.5">
-      </div>
-      <div>
-        <label class="modal-label">Data de pagamento</label>
-        <input id="heDataPagamento" class="modal-input" type="date">
-      </div>
-    </div>
-    <label class="modal-label">Status</label>
-    <select id="heStatus" class="modal-select">
-      <option value="">—</option>
-      <option value="Pendente">Pendente</option>
-      <option value="Pago">Pago</option>
-      <option value="Atrasado">Atrasado</option>
-    </select>
-    <label class="modal-label">Observação (opcional)</label>
-    <textarea id="heObservacao" class="modal-textarea"></textarea>
-    <div id="horaExtraModalStatus" class="modal-status"></div>
-    <div class="modal-actions">
-      <button class="btn-ghost btn-danger" id="heDeleteBtn" style="display:none;color:#fff" onclick="excluirHoraExtra()">Excluir</button>
-      <button class="btn-ghost" onclick="fecharModal('horaExtraModal')">Cancelar</button>
-      <button class="btn" onclick="salvarHoraExtraModal()">Salvar</button>
-    </div>
-  </div>
-</div>
 
 <!-- ── Sidebar: Detalhe de férias ── -->
 <div id="feriasSidebarBackdrop" class="ferias-sidebar-backdrop" onclick="fecharSidebarFerias_()"></div>
@@ -932,7 +971,7 @@ select.status-select {
   </div>
   <div class="ferias-sidebar-body" id="feriasSidebarBody"></div>
   <div class="ferias-sidebar-footer">
-    <button class="btn" style="width:100%" id="feriasSidebarNovoBtn" onclick="novoFeriaSidebarPessoa_()">+ Novo período</button>
+    <button class="btn" style="width:100%" id="feriasSidebarNovoBtn" onclick="novoFeriaSidebarPessoa_()">+ Registrar férias tiradas</button>
   </div>
 </div>
 
@@ -996,11 +1035,79 @@ select.status-select {
         <input id="fnDataDemissao" class="modal-input" type="date">
       </div>
     </div>
+    <label class="modal-label">E-mail (usado pra ligar essa pessoa ao login dela em Minhas Férias)</label>
+    <input id="fnEmail" class="modal-input" type="email" placeholder="nome@brasas.com">
     <div id="funcionarioModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="fnDeleteBtn" style="display:none;color:#fff" onclick="excluirFuncionario()">Excluir</button>
       <button class="btn-ghost" onclick="fecharModal('funcionarioModal')">Cancelar</button>
       <button class="btn" onclick="salvarFuncionario()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Período aquisitivo ── -->
+<div id="periodoAquisitivoModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="periodoAquisitivoModalTitle">Novo período aquisitivo</div>
+    <label class="modal-label">Pessoa</label>
+    <input id="paPessoa" class="modal-input" type="text" readonly>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Início do período aquisitivo</label>
+        <input id="paDataInicio" class="modal-input" type="date">
+      </div>
+      <div>
+        <label class="modal-label">Fim do período aquisitivo</label>
+        <input id="paDataFim" class="modal-input" type="date">
+      </div>
+    </div>
+    <div style="font-size:.75rem;color:var(--gray-500);margin-top:6px">A data limite de gozo é calculada automaticamente: 12 meses após o fim do período aquisitivo.</div>
+    <div id="periodoAquisitivoModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost btn-danger" id="paDeleteBtn" style="display:none;color:#fff" onclick="excluirPeriodoAquisitivo_()">Excluir</button>
+      <button class="btn-ghost" onclick="fecharModal('periodoAquisitivoModal')">Cancelar</button>
+      <button class="btn" onclick="salvarPeriodoAquisitivo_()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Adicionar pessoa (do Cadastro) a Férias/Admissão/Demissão ── -->
+<div id="trackModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title" id="trackModalTitle">Adicionar pessoa</div>
+    <label class="modal-label">Pessoa (já cadastrada em Cadastro de Funcionários)</label>
+    <select id="trackSelect" class="modal-select">
+      <option value="">— selecione —</option>
+    </select>
+    <div id="trackModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="fecharModal('trackModal')">Cancelar</button>
+      <button class="btn" onclick="salvarTrack_()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Solicitar férias (autoatendimento) ── -->
+<div id="solicitarFeriasModal" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-title">Solicitar férias</div>
+    <div class="modal-row">
+      <div>
+        <label class="modal-label">Início</label>
+        <input id="sfDataInicio" class="modal-input" type="date">
+      </div>
+      <div>
+        <label class="modal-label">Fim</label>
+        <input id="sfDataFim" class="modal-input" type="date">
+      </div>
+    </div>
+    <label class="modal-label">Observação (opcional)</label>
+    <textarea id="sfObservacao" class="modal-textarea"></textarea>
+    <div id="solicitarFeriasModalStatus" class="modal-status"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="fecharModal('solicitarFeriasModal')">Cancelar</button>
+      <button class="btn" onclick="salvarSolicitacaoFerias_()">Enviar pedido</button>
     </div>
   </div>
 </div>
@@ -1029,9 +1136,12 @@ var CATEGORIA_COR = {
   OPERACIONAL:'#2a4d76'
 };
 
-var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, funcionariosRH:[], calView:'month', calRefDate:new Date(), escRefDate:new Date() };
+var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], secretaria:null, ferias:null, funcionariosRH:[], minhasFerias:null, solicitacoes:[], calView:'month', calRefDate:new Date(), escRefDate:new Date() };
 
 // ── INIT ──────────────────────────────────────────────
+// Funcionário comum só enxerga Dashboard, Rotinas e Minhas Férias — as
+// demais telas dependem de dados que o backend recusa pra quem não está em
+// ADMIN_EMAILS_ (ver requireAdmin_ no Code.gs), então nem tentamos carregar.
 
 window.onload = function() {
   if (!TOKEN) { window.top.location.href = HUB_URL; return; }
@@ -1043,13 +1153,20 @@ function onUserLoaded(user) {
   state.user = user;
   document.getElementById('hNome').textContent  = user.nome || user.email;
   document.getElementById('hEmail').textContent = user.email;
-  google.script.run.withSuccessHandler(function(d){ state.dashboard = d; loadEventos(); }).withFailureHandler(showError).getDashboard(TOKEN);
-}
-function loadEventos() {
-  google.script.run.withSuccessHandler(function(d){ state.eventos = d; loadRotinas(); }).withFailureHandler(showError).getEventos(TOKEN);
+  aplicarPermissoesNav_();
+  google.script.run.withSuccessHandler(function(d){ state.dashboard = d; loadRotinas(); }).withFailureHandler(showError).getDashboard(TOKEN);
 }
 function loadRotinas() {
-  google.script.run.withSuccessHandler(function(d){ state.rotinas = d; loadEntregas(); }).withFailureHandler(showError).getRotinas(TOKEN);
+  google.script.run.withSuccessHandler(function(d){ state.rotinas = d; loadMinhasFerias(); }).withFailureHandler(showError).getRotinas(TOKEN);
+}
+function loadMinhasFerias() {
+  google.script.run
+    .withSuccessHandler(function(d){ state.minhasFerias = d; state.user.isAdmin ? loadEventos() : onAllLoaded(); })
+    .withFailureHandler(showError)
+    .getMinhaFeriasPagina(TOKEN);
+}
+function loadEventos() {
+  google.script.run.withSuccessHandler(function(d){ state.eventos = d; loadEntregas(); }).withFailureHandler(showError).getEventos(TOKEN);
 }
 function loadEntregas() {
   google.script.run.withSuccessHandler(function(d){ state.entregas = d; loadSecretaria(); }).withFailureHandler(showError).getEntregas(TOKEN);
@@ -1062,37 +1179,56 @@ function loadFerias() {
 }
 function loadFuncionariosRH() {
   google.script.run
-    .withSuccessHandler(function(d){ state.funcionariosRH = d; onAllLoaded(); })
-    .withFailureHandler(function(){ state.funcionariosRH = []; onAllLoaded(); })
+    .withSuccessHandler(function(d){ state.funcionariosRH = d; loadSolicitacoes(); })
+    .withFailureHandler(function(){ state.funcionariosRH = []; loadSolicitacoes(); })
     .getFuncionariosRH(TOKEN);
+}
+function loadSolicitacoes() {
+  google.script.run.withSuccessHandler(function(d){ state.solicitacoes = d; onAllLoaded(); }).withFailureHandler(showError).getSolicitacoes(TOKEN);
 }
 
 function onAllLoaded() {
   renderDashboard();
-  renderCalendario();
   renderRotinas();
-  renderEntregasFiltros();
-  renderEntregas();
-  renderSecretaria();
-  renderFuncionariosPagina();
+  renderMinhasFerias();
+  if (state.user.isAdmin) {
+    renderCalendario();
+    renderEntregasFiltros();
+    renderEntregas();
+    renderSecretaria();
+    renderFuncionariosPagina();
+    renderSolicitacoesSub_();
+  }
   hideAll();
   document.getElementById('screenMain').style.display = 'flex';
 }
 
 // ── TABS ──────────────────────────────────────────────
 
+var ABAS_ADMIN_ = ['calendario', 'entregas', 'funcionarios', 'secretaria'];
+
+function aplicarPermissoesNav_() {
+  if (state.user.isAdmin) return;
+  ABAS_ADMIN_.forEach(function(tab) {
+    var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+    if (btn) btn.style.display = 'none';
+  });
+}
+
 function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
   document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria' };
+  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria', minhasFerias:'tabMinhasFerias' };
   document.getElementById(map[tab]).classList.add('active');
 }
 
 function switchFuncSubTab(sub) {
   document.querySelectorAll('#tabFuncionarios .sub-tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-fsubtab') === sub); });
+  document.getElementById('funcSubCadastro').classList.toggle('active', sub === 'cadastro');
   document.getElementById('funcSubFerias').classList.toggle('active', sub === 'ferias');
   document.getElementById('funcSubAdmissao').classList.toggle('active', sub === 'admissao');
   document.getElementById('funcSubDemissao').classList.toggle('active', sub === 'demissao');
+  document.getElementById('funcSubSolicitacoes').classList.toggle('active', sub === 'solicitacoes');
 }
 
 // ── DASHBOARD ─────────────────────────────────────────
@@ -1596,38 +1732,85 @@ function onEntregaStatusChange(atividade, mes, ano, selectEl) {
 // ── FUNCIONÁRIOS (Férias / Admissão / Demissão) ────────
 
 function renderFuncionariosPagina() {
+  renderCadastroSub_();
   renderFeriasSub_();
   renderAdmissaoSub_();
   renderDemissaoSub_();
 }
 
-var FERIAS_EXCLUIDOS_ = ['Fairuzz', 'Lucas Ventura', 'Taiza Aguiar'];
+function renderCadastroSub_() {
+  var lista = (state.ferias.funcionarios || []).slice();
+  var nomeFiltro = (document.getElementById('cadNomeFiltro').value || '').toLowerCase().trim();
+  if (nomeFiltro) lista = lista.filter(function(f) { return f.nome.toLowerCase().indexOf(nomeFiltro) !== -1; });
+
+  function badge_(ativo, label) {
+    return '<span class="status-pill ' + (ativo ? 'no-prazo' : 'vazio') + '" style="font-size:.64rem;padding:2px 8px;margin-right:4px">' + label + '</span>';
+  }
+
+  document.getElementById('cadastroTable').innerHTML =
+    '<thead><tr><th>Nome</th><th>Função</th><th>Apelido</th><th>E-mail</th><th>Admissão</th><th>Demissão</th><th>Acompanhado em</th><th></th></tr></thead><tbody>' +
+    (lista.length ? lista.map(function(f) {
+      return '<tr>' +
+        '<td>' + esc(f.nome) + '</td>' +
+        '<td>' + esc(f.funcao || '—') + '</td>' +
+        '<td>' + esc(f.apelido || '—') + '</td>' +
+        '<td>' + esc(f.email || '—') + '</td>' +
+        '<td>' + (f.dataAdmissao ? fmtDataBR(f.dataAdmissao) : '—') + '</td>' +
+        '<td>' + (f.dataDemissao ? fmtDataBR(f.dataDemissao) : '—') + '</td>' +
+        '<td>' + badge_(f.rastreadoFerias, 'Férias') + badge_(f.rastreadoAdmissao, 'Admissão') + badge_(f.rastreadoDemissao, 'Demissão') + '</td>' +
+        '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(f.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum funcionário cadastrado ainda.</td></tr>') +
+    '</tbody>';
+}
+
+// Dias corridos daqui até a data limite de gozo (negativo = já venceu).
+function diasAteLimite_(dataLimiteIso) {
+  if (!dataLimiteIso) return null;
+  var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  var limite = new Date(dataLimiteIso + 'T00:00:00');
+  return Math.round((limite - hoje) / 86400000);
+}
+
+// Urgente = ainda tem dias pra tirar E faltam 30 dias ou menos pra data
+// limite de gozo (ou o prazo já venceu).
+function periodoUrgente_(p) {
+  if (p.diasRestantes === null || p.diasRestantes <= 0 || !p.dataLimiteGozo) return false;
+  var dias = diasAteLimite_(p.dataLimiteGozo);
+  return dias !== null && dias <= 30;
+}
 
 function renderFeriasSub_() {
-  var f = state.ferias;
-  var ativos = f.resumo.filter(function(r) {
-    return !r.dataDemissao && !FERIAS_EXCLUIDOS_.some(function(ex) { return r.nome === ex || r.nome.indexOf(ex + ' ') === 0; });
-  });
+  var linhas = state.ferias.feriasSaldos || [];
 
   document.getElementById('feResumoTable').innerHTML =
-    '<thead><tr><th>Pessoa</th><th>Função</th><th>Admissão</th><th>Ciclo atual</th><th class="num">Tirados</th><th class="num">Restantes</th><th></th></tr></thead><tbody>' +
-    (ativos.length ? ativos.map(function(r) {
-      var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' – ' + fmtDataBR(r.cicloFim)) : '—';
+    '<thead><tr><th>Pessoa</th><th>Função</th><th>Admissão</th><th>Período aquisitivo</th><th>Data limite de gozo</th><th class="num">Tirados</th><th class="num">Restantes</th><th></th></tr></thead><tbody>' +
+    (linhas.length ? linhas.map(function(r) {
+      var urgente = periodoUrgente_(r);
+      var periodoTxt = r.periodoAquisitivoInicio ? (fmtDataBR(r.periodoAquisitivoInicio) + ' – ' + fmtDataBR(r.periodoAquisitivoFim)) : '—';
+      var limiteHtml = r.dataLimiteGozo
+        ? '<span' + (urgente ? ' style="color:var(--danger-600);font-weight:700"' : '') + '>' + fmtDataBR(r.dataLimiteGozo) + '</span>'
+        : '—';
       var restanteHtml;
       if (r.diasRestantes === null) {
-        restanteHtml = '<span class="status-pill vazio">' + (r.dataAdmissao ? 'ciclo incompleto' : 'sem admissão') + '</span>';
+        restanteHtml = '<span class="status-pill vazio">sem período cadastrado</span>';
+      } else if (urgente) {
+        restanteHtml = '<span class="status-pill em-atraso">' + r.diasRestantes + ' dias</span>';
       } else {
         restanteHtml = '<span class="status-pill ' + (r.diasRestantes > 0 ? 'no-prazo' : 'vazio') + '">' + r.diasRestantes + ' dias</span>';
       }
-      return '<tr>' +
+      return '<tr' + (urgente ? ' style="background:var(--danger-100)"' : '') + '>' +
         '<td><span class="nome-link" onclick="abrirSidebarFerias_(\'' + esc(r.nome) + '\')">' + esc(r.nome) + '</span></td>' +
         '<td>' + esc(r.funcao || '—') + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
-        '<td>' + ciclo + '</td>' +
+        '<td>' + periodoTxt + '</td>' +
+        '<td>' + limiteHtml + '</td>' +
         '<td class="num">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</td>' +
         '<td class="num">' + restanteHtml + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="editarFuncionarioDeFerias_(\'' + esc(r.nome) + '\',' + (r.dataDemissao ? 'true' : 'false') + ')" title="Editar funcionário">&#9998;</button></td></tr>';
-    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa cadastrada ainda.</td></tr>') +
+        '<td>' +
+          '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\', true)" title="Editar funcionário">&#9998;</button>' +
+          '<button class="rot-edit-btn" onclick="removerTrack_(\'' + esc(r.nome) + '\', \'ferias\')" title="Remover desta lista">&#10005;</button>' +
+        '</td></tr>';
+    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa adicionada ainda.</td></tr>') +
     '</tbody>';
 
   document.getElementById('fePessoaList').innerHTML =
@@ -1641,10 +1824,33 @@ function renderFeriasSub_() {
 
 var _feriasSidebarNome = null;
 
+function periodoAquisitivoCardHtml_(p, somenteLeitura) {
+  var urgente = periodoUrgente_(p);
+  var periodoTxt = p.periodoAquisitivoInicio ? (fmtDataBR(p.periodoAquisitivoInicio) + ' – ' + fmtDataBR(p.periodoAquisitivoFim)) : '—';
+  var limiteTxt = p.dataLimiteGozo ? fmtDataBR(p.dataLimiteGozo) : '—';
+  var restanteTxt = p.diasRestantes === null
+    ? 'Nenhum período aquisitivo cadastrado'
+    : p.diasRestantes + ' dias';
+  var editBtn = (p.manual && !somenteLeitura)
+    ? '<button class="rot-edit-btn" onclick="abrirPeriodoAquisitivoModal_(\'' + p.id + '\')" title="Editar período aquisitivo">&#9998;</button>'
+    : '';
+  var destaque = urgente ? ' style="color:var(--danger-600)"' : '';
+  return '<div class="ferias-ciclo-card' + (urgente ? ' urgente' : '') + '" style="margin-bottom:10px">' +
+      '<div class="ferias-ciclo-full" style="display:flex;justify-content:space-between;align-items:flex-start">' +
+        '<div><div class="ferias-ciclo-label">Período aquisitivo</div><div class="ferias-ciclo-value">' + periodoTxt + '</div></div>' +
+        editBtn +
+      '</div>' +
+      '<div class="ferias-ciclo-full"><div class="ferias-ciclo-label">Data limite de gozo</div><div class="ferias-ciclo-value"' + destaque + '>' + limiteTxt + '</div></div>' +
+      '<div><div class="ferias-ciclo-label">Dias tirados</div><div class="ferias-ciclo-value">' + (p.diasTirados === null ? '—' : p.diasTirados) + '</div></div>' +
+      '<div><div class="ferias-ciclo-label">Dias restantes</div><div class="ferias-ciclo-value"' + destaque + '>' + restanteTxt + '</div></div>' +
+    '</div>';
+}
+
 function abrirSidebarFerias_(nome) {
   window._feriasSidebarNome = nome;
   var f = state.ferias;
   var r = (f.resumo || []).filter(function(x){ return x.nome === nome; })[0];
+  var periodosAquisitivos = (f.feriasSaldos || []).filter(function(x){ return x.nome === nome; });
   var periodos = (f.ferias || []).filter(function(x){ return x.pessoa === nome; });
   periodos.sort(function(a,b){ return b.dataInicio > a.dataInicio ? 1 : -1; });
 
@@ -1654,47 +1860,19 @@ function abrirSidebarFerias_(nome) {
   if (r && r.dataAdmissao) sub.push('Admissão: ' + fmtDataBR(r.dataAdmissao));
   document.getElementById('feriasSidebarSub').textContent = sub.join(' · ');
 
-  var cicloHtml = '';
-  if (r) {
-    var ciclo = r.cicloInicio ? (fmtDataBR(r.cicloInicio) + ' – ' + fmtDataBR(r.cicloFim)) : '—';
-    var restante = r.diasRestantes === null
-      ? (r.dataAdmissao ? 'Ciclo ainda não completo' : 'Sem data de admissão')
-      : r.diasRestantes + ' dias';
-    var customBadge = r.cicloCustomizado
-      ? ' <span style="font-size:.65rem;font-weight:700;background:var(--warning-100);color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;vertical-align:middle">personalizado</span>'
-      : '';
-    var restaurarBtn = r.cicloCustomizado
-      ? '<button class="btn-ghost btn-sm" onclick="limparCicloOverride_()" style="margin-right:auto;color:var(--danger-600);font-size:.75rem">Restaurar automático</button>'
-      : '';
-    cicloHtml =
-      '<div class="ferias-sidebar-section">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
-          '<div class="ferias-sidebar-section-title" style="margin:0">Ciclo atual' + customBadge + '</div>' +
-          '<button class="rot-edit-btn" onclick="toggleCicloEdit_(true)" title="Editar ciclo">&#9998;</button>' +
-        '</div>' +
-        '<div id="cicloViewCard" class="ferias-ciclo-card">' +
-          '<div class="ferias-ciclo-full"><div class="ferias-ciclo-label">Período</div><div class="ferias-ciclo-value">' + ciclo + '</div></div>' +
-          '<div><div class="ferias-ciclo-label">Dias tirados</div><div class="ferias-ciclo-value">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</div></div>' +
-          '<div><div class="ferias-ciclo-label">Dias restantes</div><div class="ferias-ciclo-value">' + restante + '</div></div>' +
-        '</div>' +
-        '<div id="cicloEditForm" style="display:none;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:14px 16px">' +
-          '<div style="font-size:.75rem;color:var(--gray-500);margin-bottom:10px">Defina um ciclo personalizado. Deixe em branco para restaurar o cálculo automático pela data de admissão.</div>' +
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">' +
-            '<div><div class="ferias-ciclo-label">Início do ciclo</div><input id="cicloInicioInput" type="date" class="modal-input" value="' + (r.cicloInicioOverride || '') + '"></div>' +
-            '<div><div class="ferias-ciclo-label">Fim do ciclo</div><input id="cicloFimInput" type="date" class="modal-input" value="' + (r.cicloFimOverride || '') + '"></div>' +
-          '</div>' +
-          '<div style="display:flex;gap:8px;justify-content:flex-end;align-items:center">' +
-            restaurarBtn +
-            '<button class="btn-ghost btn-sm" onclick="toggleCicloEdit_(false)">Cancelar</button>' +
-            '<button class="btn btn-sm" onclick="salvarCicloOverride_()">Salvar</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-  }
+  var aquisitivosHtml =
+    '<div class="ferias-sidebar-section">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+        '<div class="ferias-sidebar-section-title" style="margin:0">Períodos aquisitivos</div>' +
+        '<button class="btn-ghost btn-sm" onclick="abrirPeriodoAquisitivoModal_()">+ Adicionar</button>' +
+      '</div>' +
+      (periodosAquisitivos.length ? periodosAquisitivos.map(periodoAquisitivoCardHtml_).join('') :
+        '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período aquisitivo ainda.</div>') +
+    '</div>';
 
   var periodosHtml =
     '<div class="ferias-sidebar-section">' +
-      '<div class="ferias-sidebar-section-title">Histórico de períodos (' + periodos.length + ')</div>' +
+      '<div class="ferias-sidebar-section-title">Histórico de férias tiradas (' + periodos.length + ')</div>' +
       (periodos.length ? periodos.map(function(x) {
         return '<div class="ferias-periodo-item">' +
           '<div class="ferias-periodo-dates">' +
@@ -1707,7 +1885,7 @@ function abrirSidebarFerias_(nome) {
       }).join('') : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período registrado ainda.</div>') +
     '</div>';
 
-  document.getElementById('feriasSidebarBody').innerHTML = cicloHtml + periodosHtml;
+  document.getElementById('feriasSidebarBody').innerHTML = aquisitivosHtml + periodosHtml;
   document.getElementById('feriasSidebarBackdrop').classList.add('open');
   document.getElementById('feriasSidebar').classList.add('open');
 }
@@ -1717,26 +1895,45 @@ function fecharSidebarFerias_() {
   document.getElementById('feriasSidebar').classList.remove('open');
 }
 
-function toggleCicloEdit_(show) {
-  document.getElementById('cicloViewCard').style.display = show ? 'none' : '';
-  document.getElementById('cicloEditForm').style.display = show ? '' : 'none';
+var periodoAquisitivoEditId = null;
+
+function abrirPeriodoAquisitivoModal_(id) {
+  periodoAquisitivoEditId = id || null;
+  var nome = window._feriasSidebarNome;
+  var p = id ? (state.ferias.periodosAquisitivos || []).filter(function(x){ return x.id === id; })[0] : null;
+  document.getElementById('periodoAquisitivoModalTitle').textContent = id ? 'Editar período aquisitivo' : 'Novo período aquisitivo';
+  document.getElementById('paPessoa').value = nome || '';
+  document.getElementById('paDataInicio').value = p ? p.dataInicio : '';
+  document.getElementById('paDataFim').value = p ? p.dataFim : '';
+  document.getElementById('periodoAquisitivoModalStatus').textContent = '';
+  document.getElementById('paDeleteBtn').style.display = id ? '' : 'none';
+  document.getElementById('periodoAquisitivoModal').classList.add('open');
 }
 
-function salvarCicloOverride_() {
-  var ini = document.getElementById('cicloInicioInput').value;
-  var fim = document.getElementById('cicloFimInput').value;
-  if ((ini && !fim) || (!ini && fim)) { showToast('Informe início e fim, ou deixe ambos em branco.', 'error'); return; }
-  if (ini && fim && fim < ini) { showToast('O fim não pode ser antes do início.', 'error'); return; }
+function salvarPeriodoAquisitivo_() {
+  var status = document.getElementById('periodoAquisitivoModalStatus');
+  var payload = {
+    id: periodoAquisitivoEditId,
+    pessoa: document.getElementById('paPessoa').value,
+    dataInicio: document.getElementById('paDataInicio').value,
+    dataFim: document.getElementById('paDataFim').value
+  };
+  if (!payload.dataInicio || !payload.dataFim) { status.textContent = 'Informe início e fim.'; status.className = 'modal-status error'; return; }
+  if (payload.dataFim < payload.dataInicio) { status.textContent = 'O fim não pode ser antes do início.'; status.className = 'modal-status error'; return; }
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
   google.script.run
-    .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); showToast('Ciclo salvo!', 'success'); })
-    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
-    .saveCicloOverride(TOKEN, window._feriasSidebarNome, ini, fim);
+    .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); fecharModal('periodoAquisitivoModal'); showToast('Período aquisitivo salvo!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .savePeriodoAquisitivo(TOKEN, payload);
 }
 
-function limparCicloOverride_() {
-  document.getElementById('cicloInicioInput').value = '';
-  document.getElementById('cicloFimInput').value = '';
-  salvarCicloOverride_();
+function excluirPeriodoAquisitivo_() {
+  if (!periodoAquisitivoEditId) return;
+  if (!window.confirm('Excluir este período aquisitivo?')) return;
+  google.script.run
+    .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); fecharModal('periodoAquisitivoModal'); showToast('Período aquisitivo excluído.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .deletePeriodoAquisitivo(TOKEN, periodoAquisitivoEditId);
 }
 
 function novoFeriaSidebarPessoa_() {
@@ -1748,7 +1945,87 @@ function novoFeriaSidebarPessoa_() {
   }, 30);
 }
 
-var ADMISSAO_EXCLUIDOS_ = ['Aline','Bruna','Elaine','Germana','Mel','Natasha','Nayara','Rafaela','Rosana'];
+// ── MINHAS FÉRIAS (autoatendimento do funcionário) ─────
+
+function solicitacaoStatusPill_(s) {
+  if (s.status === 'Aprovado') return '<span class="status-pill no-prazo">Aprovado</span>';
+  if (s.status === 'Recusado') return '<span class="status-pill em-atraso">Recusado</span>';
+  return '<span class="status-pill pendente">Pendente</span>';
+}
+
+function renderMinhasFerias() {
+  var m = state.minhasFerias;
+  if (!m || !m.vinculado) {
+    document.getElementById('minhasFeriasNaoVinculado').style.display = '';
+    document.getElementById('minhasFeriasConteudo').style.display = 'none';
+    document.getElementById('mfEmailNaoVinculado').textContent = (m && m.email) || state.user.email;
+    return;
+  }
+  document.getElementById('minhasFeriasNaoVinculado').style.display = 'none';
+  document.getElementById('minhasFeriasConteudo').style.display = '';
+
+  document.getElementById('mfNome').textContent = m.nome;
+  var sub = [];
+  if (m.funcao) sub.push(m.funcao);
+  if (m.dataAdmissao) sub.push('Admissão: ' + fmtDataBR(m.dataAdmissao));
+  document.getElementById('mfSub').textContent = sub.join(' · ');
+
+  document.getElementById('mfPeriodos').innerHTML = (m.saldos || []).length
+    ? m.saldos.map(function(p) { return periodoAquisitivoCardHtml_(p, true); }).join('')
+    : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período aquisitivo ainda.</div>';
+
+  var sol = m.solicitacoes || [];
+  document.getElementById('mfSolicitacoesTable').innerHTML =
+    '<thead><tr><th>Período</th><th class="num">Dias</th><th>Status</th><th>Observação / motivo</th><th>Solicitado em</th></tr></thead><tbody>' +
+    (sol.length ? sol.map(function(s) {
+      var obsOuMotivo = s.status === 'Recusado' ? (s.motivoRecusa || '—') : (s.observacao || '—');
+      return '<tr>' +
+        '<td>' + fmtDataBR(s.dataInicio) + ' – ' + fmtDataBR(s.dataFim) + '</td>' +
+        '<td class="num">' + s.dias + '</td>' +
+        '<td>' + solicitacaoStatusPill_(s) + '</td>' +
+        '<td>' + esc(obsOuMotivo) + '</td>' +
+        '<td>' + esc(s.dataSolicitacao || '—') + '</td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma solicitação ainda.</td></tr>') +
+    '</tbody>';
+
+  var hist = m.historico || [];
+  document.getElementById('mfHistorico').innerHTML = hist.length
+    ? hist.map(function(x) {
+        return '<div class="ferias-periodo-item">' +
+          '<div class="ferias-periodo-dates">' +
+            '<div class="ferias-periodo-range">' + fmtDataBR(x.dataInicio) + ' → ' + fmtDataBR(x.dataFim) + '</div>' +
+            (x.observacao ? '<div class="ferias-periodo-obs">' + esc(x.observacao) + '</div>' : '') +
+          '</div>' +
+          '<div class="ferias-periodo-dias">' + x.dias + ' dias</div>' +
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--gray-400);font-style:italic;font-size:.85rem;padding:4px 0">Nenhum período registrado ainda.</div>';
+}
+
+function abrirSolicitarFeriasModal_() {
+  document.getElementById('sfDataInicio').value = '';
+  document.getElementById('sfDataFim').value = '';
+  document.getElementById('sfObservacao').value = '';
+  document.getElementById('solicitarFeriasModalStatus').textContent = '';
+  document.getElementById('solicitarFeriasModal').classList.add('open');
+}
+
+function salvarSolicitacaoFerias_() {
+  var status = document.getElementById('solicitarFeriasModalStatus');
+  var payload = {
+    dataInicio: document.getElementById('sfDataInicio').value,
+    dataFim: document.getElementById('sfDataFim').value,
+    observacao: document.getElementById('sfObservacao').value.trim()
+  };
+  if (!payload.dataInicio || !payload.dataFim) { status.textContent = 'Informe o período desejado.'; status.className = 'modal-status error'; return; }
+  if (payload.dataFim < payload.dataInicio) { status.textContent = 'A data final não pode ser anterior à inicial.'; status.className = 'modal-status error'; return; }
+  status.textContent = 'Enviando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(d) { state.minhasFerias = d; renderMinhasFerias(); fecharModal('solicitarFeriasModal'); showToast('Pedido de férias enviado!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .solicitarFerias(TOKEN, payload);
+}
 
 function popularAnosFiltro_(selectId, registros, campoData) {
   var anos = {};
@@ -1792,9 +2069,7 @@ function checklistCellsHtml_(nome, processo, itens) {
 
 function renderAdmissaoSub_() {
   var itens = state.ferias.checklist.itens;
-  var base = state.ferias.resumo.filter(function(r) {
-    return !r.dataDemissao && ADMISSAO_EXCLUIDOS_.indexOf(r.nome.split(' ')[0]) === -1;
-  });
+  var base = state.ferias.resumo.filter(function(r) { return r.rastreadoAdmissao; });
   popularAnosFiltro_('admAnoFiltro', base, 'dataAdmissao');
   var nomeFiltro = (document.getElementById('admNomeFiltro').value || '').toLowerCase().trim();
   var anoFiltro  = document.getElementById('admAnoFiltro').value;
@@ -1813,7 +2088,10 @@ function renderAdmissaoSub_() {
       '<td>' + esc(r.funcao || '—') + '</td>' +
       '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
       checklistCellsHtml_(r.nome, 'ADMISSAO', itens) +
-      '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+      '<td>' +
+        '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\', true)" title="Editar">&#9998;</button>' +
+        '<button class="rot-edit-btn" onclick="removerTrack_(\'' + esc(r.nome) + '\', \'admissao\')" title="Remover desta lista">&#10005;</button>' +
+      '</td></tr>';
   }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum resultado.</td></tr>') + '</tbody>';
   document.getElementById('admissaoTable').innerHTML = thead + tbody;
 }
@@ -1872,7 +2150,7 @@ function onChecklistItemChange_(selectEl) {
 
 function renderDemissaoSub_() {
   var itens = state.ferias.checklist.itens;
-  var base = state.ferias.resumo.filter(function(r) { return r.dataDemissao; });
+  var base = state.ferias.resumo.filter(function(r) { return r.rastreadoDemissao; });
   popularAnosFiltro_('demAnoFiltro', base, 'dataDemissao');
   var nomeFiltro = (document.getElementById('demNomeFiltro').value || '').toLowerCase().trim();
   var anoFiltro  = document.getElementById('demAnoFiltro').value;
@@ -1890,15 +2168,74 @@ function renderDemissaoSub_() {
     return '<tr><td>' + esc(r.nome) + '</td>' +
       '<td>' + esc(r.funcao || '—') + '</td>' +
       '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
-      '<td>' + fmtDataBR(r.dataDemissao) + '</td>' +
+      '<td>' + (r.dataDemissao ? fmtDataBR(r.dataDemissao) : '—') + '</td>' +
       checklistCellsHtml_(r.nome, 'DEMISSAO', itens) +
-      '<td><button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\')" title="Editar">&#9998;</button></td></tr>';
+      '<td>' +
+        '<button class="rot-edit-btn" onclick="abrirFuncionarioModal(\'' + esc(r.nome) + '\', true)" title="Editar">&#9998;</button>' +
+        '<button class="rot-edit-btn" onclick="removerTrack_(\'' + esc(r.nome) + '\', \'demissao\')" title="Remover desta lista">&#10005;</button>' +
+      '</td></tr>';
   }).join('') : '<tr><td colspan="' + cols + '" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum resultado.</td></tr>') + '</tbody>';
   document.getElementById('demissaoTable').innerHTML = thead + tbody;
 }
 
+// ── SOLICITAÇÕES DE FÉRIAS (aprovação pelo admin) ──────
+
+function renderSolicitacoesSub_() {
+  var lista = (state.solicitacoes || []).slice().sort(function(a, b) {
+    if (a.status === 'Pendente' && b.status !== 'Pendente') return -1;
+    if (b.status === 'Pendente' && a.status !== 'Pendente') return 1;
+    return (b.dataSolicitacao || '').localeCompare(a.dataSolicitacao || '');
+  });
+
+  var pendentes = lista.filter(function(s) { return s.status === 'Pendente'; }).length;
+  var badge = document.getElementById('solicitacoesPendentesBadge');
+  badge.textContent = pendentes;
+  badge.style.display = pendentes ? '' : 'none';
+
+  document.getElementById('solicitacoesTable').innerHTML =
+    '<thead><tr><th>Pessoa</th><th>Período</th><th class="num">Dias</th><th>Observação</th><th>Status</th><th>Solicitado em</th><th></th></tr></thead><tbody>' +
+    (lista.length ? lista.map(function(s) {
+      var acoes = s.status === 'Pendente'
+        ? '<button class="btn btn-sm" onclick="aprovarSolicitacao_(\'' + s.id + '\')" style="margin-right:6px">Aprovar</button>' +
+          '<button class="btn-ghost btn-sm" onclick="recusarSolicitacao_(\'' + s.id + '\')">Recusar</button>'
+        : (s.status === 'Recusado' ? esc(s.motivoRecusa || '—') : ('por ' + esc(s.aprovadoPor || '—')));
+      return '<tr>' +
+        '<td>' + esc(s.pessoa) + '</td>' +
+        '<td>' + fmtDataBR(s.dataInicio) + ' – ' + fmtDataBR(s.dataFim) + '</td>' +
+        '<td class="num">' + s.dias + '</td>' +
+        '<td>' + esc(s.observacao || '—') + '</td>' +
+        '<td>' + solicitacaoStatusPill_(s) + '</td>' +
+        '<td>' + esc(s.dataSolicitacao || '—') + '</td>' +
+        '<td>' + acoes + '</td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma solicitação ainda.</td></tr>') +
+    '</tbody>';
+}
+
+function aprovarSolicitacao_(id) {
+  if (!window.confirm('Aprovar esta solicitação de férias? Isso já registra o período como férias tiradas (conta no saldo).')) return;
+  google.script.run
+    .withSuccessHandler(function(d) {
+      state.solicitacoes = d;
+      renderSolicitacoesSub_();
+      recarregarFerias_(function() { showToast('Solicitação aprovada!', 'success'); });
+    })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .aprovarSolicitacao(TOKEN, id);
+}
+
+function recusarSolicitacao_(id) {
+  var motivo = window.prompt('Motivo da recusa (opcional):', '');
+  if (motivo === null) return; // cancelou o prompt
+  google.script.run
+    .withSuccessHandler(function(d) { state.solicitacoes = d; renderSolicitacoesSub_(); showToast('Solicitação recusada.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .recusarSolicitacao(TOKEN, id, motivo);
+}
+
 function pessoasConhecidasFerias_() {
   var set = {};
+  (state.ferias.funcionarios || []).forEach(function(f) { set[f.nome] = true; });
   (state.ferias.resumo || []).forEach(function(r) { set[r.nome] = true; });
   getTodasTagsConhecidas_().forEach(function(t) { set[t] = true; });
   return Object.keys(set).sort();
@@ -1961,6 +2298,7 @@ function abrirFuncionarioModal(nome, semDelete) {
   document.getElementById('fnApelido').value = f ? f.apelido : '';
   document.getElementById('fnDataAdmissao').value = f ? f.dataAdmissao : '';
   document.getElementById('fnDataDemissao').value = f ? f.dataDemissao : '';
+  document.getElementById('fnEmail').value = f ? f.email : '';
   document.getElementById('funcionarioModalStatus').textContent = '';
 
   // Popula select do RH — mostra só quando é nova pessoa
@@ -1970,12 +2308,13 @@ function abrirFuncionarioModal(nome, semDelete) {
     wrap.style.display = 'none';
   } else {
     wrap.style.display = '';
-    var jaNoSistema = (state.ferias.resumo || []).map(function(r) { return r.nome.toLowerCase(); });
+    var jaNoSistema = (state.ferias.funcionarios || []).map(function(r) { return r.nome.toLowerCase(); });
     sel.innerHTML = '<option value="">— selecione para preencher automaticamente —</option>' +
       (state.funcionariosRH.length
         ? state.funcionariosRH.map(function(p) {
             var jatem = jaNoSistema.indexOf(p.nome.toLowerCase()) !== -1;
             return '<option value="' + esc(p.nome) + '" data-admissao="' + esc(p.dataAdmissao) + '"' +
+              ' data-funcao="' + esc(p.funcao || '') + '" data-apelido="' + esc(p.apelido || '') + '" data-email="' + esc(p.email || '') + '"' +
               (jatem ? ' style="color:var(--gray-400)"' : '') + '>' +
               esc(p.nome) + (jatem ? ' (já cadastrada)' : '') + '</option>';
           }).join('')
@@ -2002,13 +2341,66 @@ function onFnRHSelectChange_() {
   if (!sel.value) return;
   document.getElementById('fnNome').value = sel.value;
   document.getElementById('fnDataAdmissao').value = opt.getAttribute('data-admissao') || '';
+  document.getElementById('fnFuncao').value = opt.getAttribute('data-funcao') || '';
+  document.getElementById('fnApelido').value = opt.getAttribute('data-apelido') || '';
+  document.getElementById('fnEmail').value = opt.getAttribute('data-email') || '';
 }
 
-// Atalho usado pela aba Férias: pula direto pra sub-aba certa (Admissão ou
-// Demissão, conforme a pessoa já tenha sido desligada) e abre a edição.
-function editarFuncionarioDeFerias_(nome, temDemissao) {
-  switchFuncSubTab(temDemissao ? 'demissao' : 'admissao');
-  abrirFuncionarioModal(nome, true);
+// ── Rastreamento independente por sub-aba (Férias/Admissão/Demissão) ───
+// Cadastrar alguém em Cadastro de Funcionários não inclui a pessoa em
+// nenhuma das 3 sub-abas — a inclusão é sempre uma ação manual e separada,
+// feita aqui escolhendo alguém já existente no Cadastro.
+
+var trackAbaAtual_ = null;
+var TRACK_LABELS_ = { ferias: 'Férias', admissao: 'Admissão', demissao: 'Demissão' };
+var TRACK_FLAG_ = { ferias: 'rastreadoFerias', admissao: 'rastreadoAdmissao', demissao: 'rastreadoDemissao' };
+
+function abrirTrackModal_(aba) {
+  trackAbaAtual_ = aba;
+  document.getElementById('trackModalTitle').textContent = 'Adicionar pessoa — ' + TRACK_LABELS_[aba];
+  document.getElementById('trackModalStatus').textContent = '';
+
+  var flag = TRACK_FLAG_[aba];
+  var jaRastreados = {};
+  (state.ferias.resumo || []).forEach(function(r) { if (r[flag]) jaRastreados[r.nome.toLowerCase()] = true; });
+
+  var disponiveis = (state.ferias.funcionarios || []).filter(function(f) { return !jaRastreados[f.nome.toLowerCase()]; });
+  var sel = document.getElementById('trackSelect');
+  sel.innerHTML = '<option value="">— selecione —</option>' +
+    (disponiveis.length
+      ? disponiveis.map(function(f) { return '<option value="' + esc(f.nome) + '">' + esc(f.nome) + '</option>'; }).join('')
+      : '<option disabled>Todo mundo do Cadastro já está aqui</option>');
+  document.getElementById('trackModal').classList.add('open');
+}
+
+function salvarTrack_() {
+  var nome = document.getElementById('trackSelect').value;
+  var status = document.getElementById('trackModalStatus');
+  if (!nome) { status.textContent = 'Selecione uma pessoa.'; status.className = 'modal-status error'; return; }
+  status.textContent = 'Salvando...'; status.className = 'modal-status';
+  google.script.run
+    .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); fecharModal('trackModal'); showToast('Pessoa adicionada!', 'success'); })
+    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message || err); status.className = 'modal-status error'; })
+    .setRastreamento(TOKEN, nome, trackAbaAtual_, true);
+}
+
+function removerTrack_(nome, aba) {
+  if (!window.confirm('Remover "' + nome + '" da lista de ' + TRACK_LABELS_[aba] + '? O cadastro da pessoa continua existindo em Cadastro de Funcionários.')) return;
+  google.script.run
+    .withSuccessHandler(function(d) { state.ferias = d; renderFuncionariosPagina(); showToast('Removido de ' + TRACK_LABELS_[aba] + '.', 'success'); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .setRastreamento(TOKEN, nome, aba, false);
+}
+
+function sincronizarRH_() {
+  google.script.run
+    .withSuccessHandler(function(d) {
+      recarregarFerias_(function() {
+        showToast('Sincronizado: ' + d.adicionados + ' nova(s), ' + d.atualizados + ' atualizada(s).', 'success');
+      });
+    })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .sincronizarFuncionariosRH(TOKEN);
 }
 
 function salvarFuncionario() {
@@ -2023,7 +2415,8 @@ function salvarFuncionario() {
     funcao: document.getElementById('fnFuncao').value.trim(),
     apelido: document.getElementById('fnApelido').value.trim(),
     dataAdmissao: document.getElementById('fnDataAdmissao').value,
-    dataDemissao: document.getElementById('fnDataDemissao').value
+    dataDemissao: document.getElementById('fnDataDemissao').value,
+    email: document.getElementById('fnEmail').value.trim()
   };
 
   status.textContent = 'Salvando...'; status.className = 'modal-status';
@@ -2067,27 +2460,30 @@ function renderSecretaria() {
 
   renderAjustesFiltros_();
   renderAjustes();
-
-  renderHorasExtras();
 }
 
+var AJUSTE_TIPOS_BASE_ = ['Troca', 'Atraso', 'Falta', 'Hora Extra'];
+
 function ajusteStatusPill_(status) {
-  var map = { 'Confirmado': 'no-prazo', 'Feito': 'no-prazo', 'A confirmar': 'pendente', 'Pendente': 'pendente', 'Atenção': 'atencao', 'Não se aplica': 'nao-aplica' };
+  var map = { 'Realizado': 'tipo-info', 'Confirmado': 'no-prazo', 'A Confirmar': 'pendente', 'Pendente': 'atencao' };
   var cls = map[status] || 'vazio';
   return '<span class="status-pill ' + cls + '">' + esc(status || '—') + '</span>';
 }
 
 function ajusteTipoPill_(tipo) {
-  var map = { 'Troca': 'tipo-info', 'Cobertura': 'no-prazo', 'Falta': 'em-atraso', 'Horário pontual': 'pendente' };
+  var map = { 'Troca': 'tipo-info', 'Atraso': 'pendente', 'Falta': 'em-atraso', 'Hora Extra': 'no-prazo' };
   var cls = map[tipo] || 'vazio';
   return '<span class="status-pill ' + cls + '">' + esc(tipo || '—') + '</span>';
 }
 
 function renderAjustesFiltros_() {
   var pessoasSet = {};
+  var tiposSet = {};
+  AJUSTE_TIPOS_BASE_.forEach(function(t) { tiposSet[t] = true; });
   state.secretaria.ajustes.forEach(function(a) {
     if (a.quemSai) pessoasSet[a.quemSai] = true;
     if (a.quemCobre) pessoasSet[a.quemCobre] = true;
+    if (a.tipo) tiposSet[a.tipo] = true;
   });
   var sel = document.getElementById('ajPessoaFilter');
   var atual = sel.value;
@@ -2096,6 +2492,17 @@ function renderAjustesFiltros_() {
       return '<option value="' + esc(p) + '"' + (p === atual ? ' selected' : '') + '>' + esc(p) + '</option>';
     }).join('');
 
+  var tipos = Object.keys(tiposSet).sort();
+  var selTipo = document.getElementById('ajTipoFilter');
+  var atualTipo = selTipo.value;
+  selTipo.innerHTML = '<option value="">Todos os tipos</option>' +
+    tipos.map(function(t) {
+      return '<option value="' + esc(t) + '"' + (t === atualTipo ? ' selected' : '') + '>' + esc(t) + '</option>';
+    }).join('');
+
+  document.getElementById('ajTipoList').innerHTML =
+    tipos.map(function(t) { return '<option value="' + esc(t) + '">'; }).join('');
+
   document.getElementById('ajPessoaList').innerHTML =
     getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
 }
@@ -2103,6 +2510,7 @@ function renderAjustesFiltros_() {
 function limparFiltrosAjustes() {
   document.getElementById('ajDataFilter').value = '';
   document.getElementById('ajTipoFilter').value = '';
+  document.getElementById('ajStatusFilter').value = '';
   document.getElementById('ajPessoaFilter').value = '';
   renderAjustes();
 }
@@ -2110,12 +2518,14 @@ function limparFiltrosAjustes() {
 function renderAjustes() {
   var dataFiltro = document.getElementById('ajDataFilter').value;
   var tipoFiltro = document.getElementById('ajTipoFilter').value;
+  var statusFiltro = document.getElementById('ajStatusFilter').value;
   var pessoaFiltro = document.getElementById('ajPessoaFilter').value;
-  var temFiltro = !!(dataFiltro || tipoFiltro || pessoaFiltro);
+  var temFiltro = !!(dataFiltro || tipoFiltro || statusFiltro || pessoaFiltro);
 
   var lista = state.secretaria.ajustes.filter(function(a) {
     if (dataFiltro && a.data !== dataFiltro) return false;
     if (tipoFiltro && a.tipo !== tipoFiltro) return false;
+    if (statusFiltro && a.status !== statusFiltro) return false;
     if (pessoaFiltro && a.quemSai !== pessoaFiltro && a.quemCobre !== pessoaFiltro) return false;
     return true;
   });
@@ -2135,12 +2545,13 @@ function renderAjustes() {
       '<td><div class="rot-tags">' + (envolvidos.length ? envolvidos.join(seta) : '—') + '</div></td>' +
       '<td>' + horarioHtml + '</td>' +
       '<td>' + ajusteStatusPill_(a.status) + '</td>' +
+      '<td>' + (a.anexoUrl ? '<a href="' + esc(a.anexoUrl) + '" target="_blank" rel="noopener" title="' + esc(a.anexoNome || 'Ver anexo') + '">📎</a>' : '<span style="color:var(--gray-300)">—</span>') + '</td>' +
       '<td><button class="rot-edit-btn" onclick="abrirAjusteModal(\'' + a.id + '\')" title="Editar">&#9998;</button></td></tr>';
   }).join('');
 
   document.getElementById('ajustesTable').innerHTML =
-    '<thead><tr><th>Data</th><th>Tipo</th><th>Envolvidos</th><th>Horário</th><th>Status</th><th></th></tr></thead><tbody>' +
-    (linhas || '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum ajuste encontrado.</td></tr>') +
+    '<thead><tr><th>Data</th><th>Tipo</th><th>Envolvidos</th><th>Horário</th><th>Status</th><th>Anexo</th><th></th></tr></thead><tbody>' +
+    (linhas || '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhum ajuste encontrado.</td></tr>') +
     '</tbody>';
 }
 
@@ -2288,8 +2699,21 @@ function abrirAjusteModal(id) {
   document.getElementById('ajQuemCobre').value = a ? a.quemCobre : '';
   document.getElementById('ajHorarioDe').value = a ? a.horarioDe : '';
   document.getElementById('ajHorarioPara').value = a ? a.horarioPara : '';
-  document.getElementById('ajStatus').value = a ? a.status : 'A confirmar';
+  document.getElementById('ajStatus').value = a ? a.status : 'Pendente';
   document.getElementById('ajAtividade').value = a ? a.atividade : '';
+  document.getElementById('ajAnexoFile').value = '';
+  document.getElementById('ajRemoverAnexo').checked = false;
+
+  var anexoWrap = document.getElementById('ajAnexoAtualWrap');
+  if (a && a.anexoUrl) {
+    anexoWrap.style.display = '';
+    var link = document.getElementById('ajAnexoAtualLink');
+    link.href = a.anexoUrl;
+    link.textContent = '📎 ' + (a.anexoNome || 'Ver anexo atual');
+  } else {
+    anexoWrap.style.display = 'none';
+  }
+
   document.getElementById('ajusteModalStatus').textContent = '';
   document.getElementById('ajDeleteBtn').style.display = a ? '' : 'none';
   document.getElementById('ajusteModal').classList.add('open');
@@ -2305,17 +2729,40 @@ function salvarAjusteModal() {
 
   var payload = {
     id: ajusteEditId,
-    tipo: document.getElementById('ajTipo').value,
+    tipo: document.getElementById('ajTipo').value.trim(),
     data: data,
     quemSai: quemSai,
     quemCobre: quemCobre,
     horarioDe: document.getElementById('ajHorarioDe').value.trim(),
     horarioPara: document.getElementById('ajHorarioPara').value.trim(),
     status: document.getElementById('ajStatus').value,
-    atividade: document.getElementById('ajAtividade').value.trim()
+    atividade: document.getElementById('ajAtividade').value.trim(),
+    removerAnexo: document.getElementById('ajRemoverAnexo').checked
   };
 
+  var arquivo = document.getElementById('ajAnexoFile').files[0];
+  if (arquivo && arquivo.size > 10 * 1024 * 1024) {
+    status.textContent = 'Anexo muito grande (máximo 10MB).'; status.className = 'modal-status error'; return;
+  }
+
   status.textContent = 'Salvando...'; status.className = 'modal-status';
+
+  if (arquivo) {
+    var reader = new FileReader();
+    reader.onload = function() {
+      payload.anexoBase64 = reader.result.split(',')[1];
+      payload.anexoNome = arquivo.name;
+      payload.anexoMimeType = arquivo.type;
+      enviarAjusteHorario_(payload, status);
+    };
+    reader.onerror = function() { status.textContent = 'Erro ao ler o arquivo do anexo.'; status.className = 'modal-status error'; };
+    reader.readAsDataURL(arquivo);
+  } else {
+    enviarAjusteHorario_(payload, status);
+  }
+}
+
+function enviarAjusteHorario_(payload, status) {
   google.script.run
     .withSuccessHandler(function(list) { state.secretaria.ajustes = list; fecharModal('ajusteModal'); renderSecretaria(); showToast('Ajuste salvo!', 'success'); })
     .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
@@ -2329,77 +2776,6 @@ function excluirAjuste() {
     .withSuccessHandler(function(list) { state.secretaria.ajustes = list; fecharModal('ajusteModal'); renderSecretaria(); showToast('Ajuste excluído.', 'success'); })
     .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
     .deleteAjusteHorario(TOKEN, ajusteEditId);
-}
-
-// -- Horas extras --
-var horaExtraEditId = null;
-
-function horaExtraStatusPill_(status) {
-  var map = { 'Pago': 'no-prazo', 'Pendente': 'pendente', 'Atrasado': 'em-atraso' };
-  var cls = map[status] || 'vazio';
-  return '<span class="status-pill ' + cls + '">' + esc(status || '—') + '</span>';
-}
-
-function renderHorasExtras() {
-  var lista = state.secretaria.horasExtras || [];
-  document.getElementById('horasExtrasTable').innerHTML =
-    '<thead><tr><th>Pessoa</th><th class="num">Horas</th><th>Data de pagamento</th><th>Status</th><th></th></tr></thead><tbody>' +
-    (lista.length ? lista.map(function(h) {
-      return '<tr><td>' + esc(h.pessoa) + '</td>' +
-        '<td class="num">' + h.horas + '</td>' +
-        '<td>' + (h.dataPagamento ? fmtDataBR(h.dataPagamento) : '—') + '</td>' +
-        '<td>' + horaExtraStatusPill_(h.status) + '</td>' +
-        '<td><button class="rot-edit-btn" onclick="abrirHoraExtraModal(\'' + h.id + '\')" title="Editar">&#9998;</button></td></tr>';
-    }).join('') : '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma hora extra registrada.</td></tr>') +
-    '</tbody>';
-
-  document.getElementById('heNomePessoaList').innerHTML =
-    getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
-}
-
-function abrirHoraExtraModal(id) {
-  horaExtraEditId = id || null;
-  var h = id ? (state.secretaria.horasExtras || []).filter(function(x){ return x.id===id; })[0] : null;
-  document.getElementById('horaExtraModalTitle').textContent = h ? 'Editar hora extra' : 'Nova hora extra';
-  document.getElementById('heNomePessoa').value = h ? h.pessoa : '';
-  document.getElementById('heHoras').value = h ? h.horas : '';
-  document.getElementById('heDataPagamento').value = h ? h.dataPagamento : '';
-  document.getElementById('heStatus').value = h ? h.status : '';
-  document.getElementById('heObservacao').value = h ? h.observacao : '';
-  document.getElementById('horaExtraModalStatus').textContent = '';
-  document.getElementById('heDeleteBtn').style.display = h ? '' : 'none';
-  document.getElementById('horaExtraModal').classList.add('open');
-}
-
-function salvarHoraExtraModal() {
-  var pessoa = document.getElementById('heNomePessoa').value.trim();
-  var horas = document.getElementById('heHoras').value;
-  var status = document.getElementById('horaExtraModalStatus');
-  if (!pessoa || !horas) { status.textContent = 'Informe a pessoa e a quantidade de horas.'; status.className = 'modal-status error'; return; }
-
-  var payload = {
-    id: horaExtraEditId,
-    pessoa: pessoa,
-    horas: Number(horas),
-    dataPagamento: document.getElementById('heDataPagamento').value,
-    status: document.getElementById('heStatus').value,
-    observacao: document.getElementById('heObservacao').value.trim()
-  };
-
-  status.textContent = 'Salvando...'; status.className = 'modal-status';
-  google.script.run
-    .withSuccessHandler(function(list) { state.secretaria.horasExtras = list; fecharModal('horaExtraModal'); renderHorasExtras(); showToast('Hora extra salva!', 'success'); })
-    .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
-    .saveHoraExtra(TOKEN, payload);
-}
-
-function excluirHoraExtra() {
-  if (!horaExtraEditId) return;
-  if (!window.confirm('Excluir este registro de hora extra?')) return;
-  google.script.run
-    .withSuccessHandler(function(list) { state.secretaria.horasExtras = list; fecharModal('horaExtraModal'); renderHorasExtras(); showToast('Registro excluído.', 'success'); })
-    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
-    .deleteHoraExtra(TOKEN, horaExtraEditId);
 }
 
 // Recarrega o dashboard depois de alterações no calendário/secretaria que o afetam

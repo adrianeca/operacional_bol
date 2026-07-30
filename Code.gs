@@ -5,6 +5,14 @@
 const OPERACIONAL_SHEET_ID = '1I8nss8jH0sv8qCmagWI2bITPEW2JWhi5OUsjVeBA_-M';
 const HUB_SS_ID  = '1eZPbzhzjhjHoPwMhAW5YvOZgYiAvlTYc07dRan6Lyoc'; // mesmo Hub do app de Horas
 const MEU_ACESSO = 'operacionalbol'; // precisa estar liberado na coluna ACESSOS da aba SESSOES do Hub
+
+// E-mails com acesso total ao painel (todas as abas). Quem não está nessa
+// lista é "funcionário comum": só vê Dashboard, Rotinas e Minhas Férias.
+const ADMIN_EMAILS_ = ['natasha@brasas.com', 'aline.castro@brasas.com', 'adriane@brasas.com', 'bruno@brasas.com', 'peter@brasas.com'];
+
+function ehAdmin_(email) {
+  return ADMIN_EMAILS_.indexOf(String(email || '').trim().toLowerCase()) !== -1;
+}
 const HUB_URL     = 'https://script.google.com/a/macros/brasas.com/s/AKfycbyF7BArYMYFtcQY7_4RTGGPw89yNohAjR7eGptItP-EsnWhNfiZR2ISRaHdAkwlLSlr/exec';
 
 const ABA_EVENTOS         = 'EVENTOS';
@@ -14,8 +22,9 @@ const ABA_ENTREGAS        = 'ENTREGAS';
 const ABA_HORARIOS        = 'HORARIOS';
 const ABA_ESCALA_SABADO   = 'ESCALA_SABADO';
 const ABA_AJUSTES_HORARIO = 'AJUSTES_HORARIO';
-const ABA_HORAS_EXTRAS    = 'HORAS_EXTRAS';
 const ABA_FERIAS          = 'FERIAS';
+const ABA_PERIODOS_AQUISITIVOS = 'PERIODOS_AQUISITIVOS';
+const ABA_SOLICITACOES_FERIAS  = 'SOLICITACOES_FERIAS';
 const ABA_FUNCIONARIOS    = 'FUNCIONARIOS';
 const ABA_CHECKLIST_ADMISSAO = 'ADMISSAO_CHECKLIST';
 
@@ -148,7 +157,8 @@ function getSessionUserUncached_(token) {
     return {
       email: email,
       nome:  String(row[2] || '').trim(),
-      role:  String(row[3] || '').trim().toLowerCase()
+      role:  String(row[3] || '').trim().toLowerCase(),
+      isAdmin: ehAdmin_(email)
     };
   } catch (e) {
     if (e.message && e.message.indexOf('permissão') !== -1) throw e;
@@ -163,6 +173,17 @@ function requireUser_(token) {
   return user;
 }
 
+// Igual requireUser_, mas só deixa passar quem está em ADMIN_EMAILS_. Usado
+// pelas telas/ações que um funcionário comum não deve alcançar (Calendário,
+// Entregas, Secretaria, Cadastro de Funcionários, Férias/Admissão/Demissão de
+// todo mundo, aprovação de solicitações etc.) — funcionário comum só tem
+// Dashboard, Rotinas e a própria aba de Minhas Férias.
+function requireAdmin_(token) {
+  const user = requireUser_(token);
+  if (!user.isAdmin) throw new Error('Acesso restrito ao administrador.');
+  return user;
+}
+
 // =============================================================================
 // DASHBOARD
 // =============================================================================
@@ -174,14 +195,14 @@ function getDashboard(token) {
   const hojeStr = fmtData_(hoje);
   const diaSemana = hoje.getDay(); // 0=domingo ... 6=sábado
 
-  const horarios    = getHorarios(token).filter(function(h) { return h.ativo; });
-  const ajustesHoje  = getAjustesHorario(token).filter(function(a) {
+  const horarios    = getHorariosImpl_().filter(function(h) { return h.ativo; });
+  const ajustesHoje  = getAjustesHorarioImpl_().filter(function(a) {
     return a.data === hojeStr && (!a.status || a.status === 'Pendente');
   });
 
   let quemTrabalha = [];
   if (diaSemana === 6) {
-    const escalaHoje = getEscalaSabado(token).filter(function(e) { return e.data === hojeStr; })[0];
+    const escalaHoje = getEscalaSabadoImpl_().filter(function(e) { return e.data === hojeStr; })[0];
     if (escalaHoje) {
       quemTrabalha = [escalaHoje.pessoa1, escalaHoje.pessoa2, escalaHoje.pessoa3]
         .filter(Boolean)
@@ -201,7 +222,7 @@ function getDashboard(token) {
     });
   }
 
-  const feriasPeriodos = getFerias(token);
+  const feriasPeriodos = getFeriasImpl_();
   quemTrabalha = quemTrabalha.map(function(p) {
     const deFerias = feriasPeriodos.some(function(f) {
       return norm_(f.pessoa) === norm_(p.nome) && f.dataInicio <= hojeStr && f.dataFim >= hojeStr;
@@ -209,7 +230,7 @@ function getDashboard(token) {
     return deFerias ? Object.assign({}, p, { ferias: true }) : p;
   });
 
-  const eventos  = getEventos(token);
+  const eventos  = getEventosImpl_();
   const hojeMs   = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).getTime();
   const limiteMs = hojeMs + 7 * 86400000;
   const eventosSemana = eventos.filter(function(ev) {
@@ -220,7 +241,7 @@ function getDashboard(token) {
   });
 
   const mesAtual = hoje.getMonth() + 1, anoAtual = hoje.getFullYear();
-  const entregasPendentes = getEntregas(token).filter(function(e) {
+  const entregasPendentes = getEntregasImpl_().filter(function(e) {
     return e.mes === mesAtual && e.ano === anoAtual && e.status !== 'NO PRAZO';
   });
 
@@ -262,8 +283,8 @@ function eventoFromRow_(r) {
 // Eventos "virtuais" derivados da aba FERIAS, para aparecerem no Calendário e
 // no Dashboard sem duplicar dado (a aba FERIAS é a fonte da verdade). Têm id
 // prefixado com "ferias-" e não podem ser editados/excluídos por aqui.
-function eventosVirtuaisFerias_(token) {
-  return getFerias(token).map(function(f) {
+function eventosVirtuaisFerias_() {
+  return getFeriasImpl_().map(function(f) {
     return {
       id: 'ferias-' + f.id,
       dataInicio: f.dataInicio,
@@ -277,8 +298,9 @@ function eventosVirtuaisFerias_(token) {
   });
 }
 
-function getEventos(token) {
-  requireUser_(token);
+// Implementação sem checagem de admin — usada pelo Calendário (admin) e
+// também internamente pelo Dashboard (aberto a qualquer funcionário).
+function getEventosImpl_() {
   const rows = getEventosSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -288,13 +310,18 @@ function getEventos(token) {
     if (String(rows[i][3]).trim().toUpperCase() === 'FERIAS') continue;
     out.push(eventoFromRow_(rows[i]));
   }
-  out.push.apply(out, eventosVirtuaisFerias_(token));
+  out.push.apply(out, eventosVirtuaisFerias_());
   out.sort(function(a, b) { return (a.dataInicio || '9999').localeCompare(b.dataInicio || '9999'); });
   return out;
 }
 
+function getEventos(token) {
+  requireAdmin_(token);
+  return getEventosImpl_();
+}
+
 function saveEvento(token, evento) {
-  const user  = requireUser_(token);
+  const user  = requireAdmin_(token);
   const sheet = getEventosSheet_();
 
   if (evento.id && String(evento.id).indexOf('ferias-') === 0) {
@@ -324,7 +351,7 @@ function saveEvento(token, evento) {
 }
 
 function deleteEvento(token, id) {
-  requireUser_(token);
+  requireAdmin_(token);
   if (String(id).indexOf('ferias-') === 0) {
     throw new Error('Este evento vem da página Férias — edite ou exclua por lá.');
   }
@@ -489,7 +516,7 @@ function deleteRotina(token, id) {
 }
 
 function deleteFuncionario(token, nome) {
-  requireUser_(token);
+  requireAdmin_(token);
   const sheet = getFuncionariosSheet_();
   const rows  = sheet.getDataRange().getValues();
   const nomeNorm = norm_(nome);
@@ -608,8 +635,9 @@ function entregaFromRow_(r) {
   };
 }
 
-function getEntregas(token) {
-  requireUser_(token);
+// Sem checagem de admin — usada pela tela de Entregas (admin) e internamente
+// pelo Dashboard (aberto a qualquer funcionário).
+function getEntregasImpl_() {
   const rows = getEntregasSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -619,8 +647,13 @@ function getEntregas(token) {
   return out;
 }
 
+function getEntregas(token) {
+  requireAdmin_(token);
+  return getEntregasImpl_();
+}
+
 function saveEntregaStatus(token, payload) {
-  const user  = requireUser_(token);
+  const user  = requireAdmin_(token);
   const sheet = getEntregasSheet_();
 
   const atividade = String(payload.atividade || '').trim();
@@ -648,8 +681,9 @@ function getHorariosSheet_() {
   return sheet;
 }
 
-function getHorarios(token) {
-  requireUser_(token);
+// Sem checagem de admin — usada pela Secretaria (admin) e internamente pelo
+// Dashboard (aberto a qualquer funcionário).
+function getHorariosImpl_() {
   const rows = getHorariosSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -664,8 +698,13 @@ function getHorarios(token) {
   return out;
 }
 
+function getHorarios(token) {
+  requireAdmin_(token);
+  return getHorariosImpl_();
+}
+
 function saveHorario(token, h) {
-  requireUser_(token);
+  requireAdmin_(token);
   const sheet = getHorariosSheet_();
 
   const nome = String(h.nome || '').trim();
@@ -701,8 +740,9 @@ function escalaFromRow_(r) {
   };
 }
 
-function getEscalaSabado(token) {
-  requireUser_(token);
+// Sem checagem de admin — usada pela Secretaria (admin) e internamente pelo
+// Dashboard (aberto a qualquer funcionário, pra saber a escala de sábado).
+function getEscalaSabadoImpl_() {
   const rows = getEscalaSabadoSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -713,8 +753,13 @@ function getEscalaSabado(token) {
   return out;
 }
 
+function getEscalaSabado(token) {
+  requireAdmin_(token);
+  return getEscalaSabadoImpl_();
+}
+
 function saveEscalaSabado(token, e) {
-  requireUser_(token);
+  requireAdmin_(token);
   const sheet = getEscalaSabadoSheet_();
 
   const dataStr = String(e.data || '').trim();
@@ -737,7 +782,7 @@ function saveEscalaSabado(token, e) {
 function getAjustesSheet_() {
   const sheet = getOpSS_().getSheetByName(ABA_AJUSTES_HORARIO);
   if (!sheet) throw new Error('Aba "' + ABA_AJUSTES_HORARIO + '" não encontrada.');
-  const header = sheet.getRange(1, 1, 1, 14).getValues()[0];
+  const header = sheet.getRange(1, 1, 1, 16).getValues()[0];
   if (!header[7]) {
     sheet.getRange(1, 8).setValue('ID');
     const last = sheet.getLastRow();
@@ -752,6 +797,8 @@ function getAjustesSheet_() {
   if (!header[11]) sheet.getRange(1, 12).setValue('Quem cobre');
   if (!header[12]) sheet.getRange(1, 13).setValue('Horário de');
   if (!header[13]) sheet.getRange(1, 14).setValue('Horário para');
+  if (!header[14]) sheet.getRange(1, 15).setValue('Anexo_URL');
+  if (!header[15]) sheet.getRange(1, 16).setValue('Anexo_Nome');
   return sheet;
 }
 
@@ -769,12 +816,36 @@ function ajusteFromRow_(r) {
     quemSai: String(r[10] || '').trim(),
     quemCobre: String(r[11] || '').trim(),
     horarioDe: fmtHora_(r[12]),
-    horarioPara: fmtHora_(r[13])
+    horarioPara: fmtHora_(r[13]),
+    anexoUrl: String(r[14] || '').trim(),
+    anexoNome: String(r[15] || '').trim()
   };
 }
 
-function getAjustesHorario(token) {
-  requireUser_(token);
+// Pasta do Drive onde ficam os anexos (atestados, documentos etc.) dos
+// ajustes de horário: https://drive.google.com/drive/folders/1IRDW35AMspLcsIf3ke-DvWbxRbJtI4nP
+const ANEXOS_AJUSTES_FOLDER_ID = '1IRDW35AMspLcsIf3ke-DvWbxRbJtI4nP';
+
+// Recebe o arquivo em base64 (vindo do FileReader do navegador), salva na
+// pasta de anexos e libera visualização por link pra quem tem conta no
+// domínio da BRASAS — sem isso, só o dono do arquivo (a conta por trás do
+// Apps Script) conseguiria abrir o link.
+function uploadAnexoAjuste_(base64, nome, mimeType) {
+  const folder = DriveApp.getFolderById(ANEXOS_AJUSTES_FOLDER_ID);
+  const bytes = Utilities.base64Decode(base64);
+  const blob = Utilities.newBlob(bytes, mimeType || 'application/octet-stream', nome || 'anexo');
+  const file = folder.createFile(blob);
+  try {
+    file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (e) {
+    Logger.log('uploadAnexoAjuste_: não foi possível liberar compartilhamento por link: ' + e);
+  }
+  return { url: file.getUrl(), nome: file.getName() };
+}
+
+// Sem checagem de admin — usada pela Secretaria (admin) e internamente pelo
+// Dashboard (aberto a qualquer funcionário, pra saber trocas/coberturas de hoje).
+function getAjustesHorarioImpl_() {
   const rows = getAjustesSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -785,8 +856,13 @@ function getAjustesHorario(token) {
   return out;
 }
 
+function getAjustesHorario(token) {
+  requireAdmin_(token);
+  return getAjustesHorarioImpl_();
+}
+
 function saveAjusteHorario(token, a) {
-  const user  = requireUser_(token);
+  const user  = requireAdmin_(token);
   const sheet = getAjustesSheet_();
 
   const dataStr = String(a.data || '').trim();
@@ -802,6 +878,15 @@ function saveAjusteHorario(token, a) {
   const horarioPara = String(a.horarioPara || '').trim();
   const tags = [quemSai, quemCobre].filter(function(x) { return x; }).join(' / ');
 
+  // anexo === null: não mexe no que já tinha. {url,nome}: grava (novo upload,
+  // ou {url:'',nome:''} quando o usuário pediu pra remover o anexo atual).
+  let anexo = null;
+  if (a.anexoBase64) {
+    anexo = uploadAnexoAjuste_(a.anexoBase64, a.anexoNome, a.anexoMimeType);
+  } else if (a.removerAnexo) {
+    anexo = { url: '', nome: '' };
+  }
+
   if (a.id) {
     const rows = sheet.getDataRange().getValues();
     for (let i = 1; i < rows.length; i++) {
@@ -811,20 +896,25 @@ function saveAjusteHorario(token, a) {
         // Colunas de horário precisam ser texto puro, senão o Sheets converte
         // um valor tipo "07:00" (sem " - ") num serial de hora automaticamente.
         sheet.getRange(i + 1, 13, 1, 2).setNumberFormat('@').setValues([[horarioDe, horarioPara]]);
+        if (anexo) sheet.getRange(i + 1, 15, 1, 2).setValues([[anexo.url, anexo.nome]]);
         return getAjustesHorario(token);
       }
     }
     throw new Error('Ajuste não encontrado.');
   }
 
-  sheet.appendRow([atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(), tags, tipo, quemSai, quemCobre, '', '']);
+  sheet.appendRow([
+    atividade, data, status, data.getMonth() + 1, data.getFullYear(), user.email, new Date(), Utilities.getUuid(),
+    tags, tipo, quemSai, quemCobre, '', '',
+    anexo ? anexo.url : '', anexo ? anexo.nome : ''
+  ]);
   const lastRow = sheet.getLastRow();
   sheet.getRange(lastRow, 13, 1, 2).setNumberFormat('@').setValues([[horarioDe, horarioPara]]);
   return getAjustesHorario(token);
 }
 
 function deleteAjusteHorario(token, id) {
-  requireUser_(token);
+  requireAdmin_(token);
   const sheet = getAjustesSheet_();
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -836,89 +926,12 @@ function deleteAjusteHorario(token, id) {
   return getAjustesHorario(token);
 }
 
-function getHorasExtrasSheet_() {
-  const ss = getOpSS_();
-  let sheet = ss.getSheetByName(ABA_HORAS_EXTRAS);
-  if (!sheet) {
-    sheet = ss.insertSheet(ABA_HORAS_EXTRAS);
-    sheet.appendRow(['Pessoa', 'Horas', 'Data_Pagamento', 'Status', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID']);
-  }
-  return sheet;
-}
-
-function horaExtraFromRow_(r) {
-  return {
-    id: String(r[7]),
-    pessoa: String(r[0] || '').trim(),
-    horas: Number(r[1]) || 0,
-    dataPagamento: fmtData_(r[2]),
-    status: String(r[3] || '').trim(),
-    observacao: String(r[4] || '').trim(),
-    criadoPor: String(r[5] || '').trim(),
-    criadoEm: fmtDataHora_(r[6])
-  };
-}
-
-function getHorasExtras(token) {
-  requireUser_(token);
-  const rows = getHorasExtrasSheet_().getDataRange().getValues();
-  const out = [];
-  for (let i = 1; i < rows.length; i++) {
-    if (!rows[i][0]) continue;
-    out.push(horaExtraFromRow_(rows[i]));
-  }
-  out.sort(function(a, b) { return (b.dataPagamento || '').localeCompare(a.dataPagamento || ''); });
-  return out;
-}
-
-function saveHoraExtra(token, h) {
-  const user  = requireUser_(token);
-  const sheet = getHorasExtrasSheet_();
-
-  const pessoa = String(h.pessoa || '').trim();
-  const horas  = Number(h.horas) || 0;
-  if (!pessoa) throw new Error('Informe a pessoa.');
-  if (!horas) throw new Error('Informe a quantidade de horas.');
-  const dataPagamentoStr = String(h.dataPagamento || '').trim();
-  const dataPagamento = dataPagamentoStr ? new Date(dataPagamentoStr + 'T00:00:00') : '';
-  const status = String(h.status || '').trim();
-  const observacao = String(h.observacao || '').trim();
-
-  if (h.id) {
-    const rows = sheet.getDataRange().getValues();
-    for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][7]) === String(h.id)) {
-        sheet.getRange(i + 1, 1, 1, 5).setValues([[pessoa, horas, dataPagamento, status, observacao]]);
-        return getHorasExtras(token);
-      }
-    }
-    throw new Error('Registro de hora extra não encontrado.');
-  }
-
-  sheet.appendRow([pessoa, horas, dataPagamento, status, observacao, user.email, new Date(), Utilities.getUuid()]);
-  return getHorasExtras(token);
-}
-
-function deleteHoraExtra(token, id) {
-  requireUser_(token);
-  const sheet = getHorasExtrasSheet_();
-  const rows  = sheet.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][7]) === String(id)) {
-      sheet.deleteRow(i + 1);
-      break;
-    }
-  }
-  return getHorasExtras(token);
-}
-
 function getSecretaria(token) {
-  requireUser_(token);
+  requireAdmin_(token);
   return {
     horarios: getHorarios(token),
     escalaSabado: getEscalaSabado(token),
-    ajustes: getAjustesHorario(token),
-    horasExtras: getHorasExtras(token)
+    ajustes: getAjustesHorario(token)
   };
 }
 
@@ -926,14 +939,58 @@ function getSecretaria(token) {
 // FÉRIAS + FUNCIONÁRIOS (data de admissão)
 // =============================================================================
 
+const FUNCIONARIOS_HEADERS_ = ['Nome', 'Data_Admissao', 'Data_Demissao', 'Funcao', 'Apelido', 'ID', 'Ciclo_Inicio_Override', 'Ciclo_Fim_Override', 'Rastreado_Ferias', 'Rastreado_Admissao', 'Rastreado_Demissao', 'Email'];
+const FUNCIONARIOS_COL_RASTREADO_FERIAS_ = 9; // a partir daqui o backfill de migrarRastreamentoInicial_ só deve rodar uma vez
+
 function getFuncionariosSheet_() {
   const ss = getOpSS_();
   let sheet = ss.getSheetByName(ABA_FUNCIONARIOS);
   if (!sheet) {
     sheet = ss.insertSheet(ABA_FUNCIONARIOS);
-    sheet.appendRow(['Nome', 'Data_Admissao', 'Data_Demissao', 'Funcao', 'Apelido', 'ID', 'Ciclo_Inicio_Override', 'Ciclo_Fim_Override']);
+    sheet.appendRow(FUNCIONARIOS_HEADERS_);
+    return sheet;
+  }
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < FUNCIONARIOS_HEADERS_.length) {
+    // Só faz o backfill de Rastreado_* na primeira vez que essas colunas são
+    // criadas — se elas já existiam (e só uma coluna posterior, como Email,
+    // está sendo adicionada agora), rodar de novo apagaria marcações que os
+    // usuários já ajustaram manualmente no app.
+    const precisaBackfillRastreamento = lastCol < FUNCIONARIOS_COL_RASTREADO_FERIAS_ + 2;
+    sheet.getRange(1, lastCol + 1, 1, FUNCIONARIOS_HEADERS_.length - lastCol).setValues([FUNCIONARIOS_HEADERS_.slice(lastCol)]);
+    if (precisaBackfillRastreamento) migrarRastreamentoInicial_(sheet);
   }
   return sheet;
+}
+
+// Roda uma única vez, no momento em que as colunas Rastreado_* são criadas:
+// replica o comportamento antigo (mesma lista compartilhada entre Férias e
+// Admissão, com pessoas escondidas via arrays de exclusão hardcoded no
+// front-end) como estado inicial, pra ninguém sumir das telas na migração.
+// Daqui pra frente, cada aba passa a ter sua própria lista independente.
+function migrarRastreamentoInicial_(sheet) {
+  const FERIAS_EXCLUIDOS = ['fairuzz', 'lucas ventura', 'taiza aguiar'];
+  const ADMISSAO_EXCLUIDOS = ['aline', 'bruna', 'elaine', 'germana', 'mel', 'natasha', 'nayara', 'rafaela', 'rosana'];
+  const rows = sheet.getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const nome = String(rows[i][0] || '').trim();
+    if (!nome) { out.push(['', '', '']); continue; }
+    const nomeNorm = norm_(nome);
+    const primeiroNome = norm_(nome.split(' ')[0]);
+    const temDemissao = !!rows[i][2];
+    const excluidoFerias = FERIAS_EXCLUIDOS.some(function(ex) { return nomeNorm === ex || nomeNorm.indexOf(ex + ' ') === 0; });
+    out.push([
+      !temDemissao && !excluidoFerias,
+      !temDemissao && ADMISSAO_EXCLUIDOS.indexOf(primeiroNome) === -1,
+      temDemissao
+    ]);
+  }
+  if (out.length) sheet.getRange(2, 9, out.length, 3).setValues(out);
+}
+
+function bool_(v) {
+  return v === true || String(v).trim().toUpperCase() === 'TRUE';
 }
 
 function funcionarioFromRow_(r) {
@@ -946,13 +1003,17 @@ function funcionarioFromRow_(r) {
     apelido: String(r[4] || '').trim(),
     ativo: !dataDemissao,
     id: String(r[5] || ''),
-    cicloInicioOverride: fmtData_(r[6]),
-    cicloFimOverride: fmtData_(r[7])
+    rastreadoFerias: bool_(r[8]),
+    rastreadoAdmissao: bool_(r[9]),
+    rastreadoDemissao: bool_(r[10]),
+    email: String(r[11] || '').trim().toLowerCase()
   };
 }
 
-function getFuncionarios(token) {
-  requireUser_(token);
+// Sem checagem de admin — usada pelo Cadastro (admin) e internamente por
+// Minhas Férias / solicitarFerias (abertos a qualquer funcionário, que só
+// precisam achar o próprio registro pelo e-mail).
+function getFuncionariosImpl_() {
   const rows = getFuncionariosSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -963,8 +1024,13 @@ function getFuncionarios(token) {
   return out;
 }
 
+function getFuncionarios(token) {
+  requireAdmin_(token);
+  return getFuncionariosImpl_();
+}
+
 function saveFuncionario(token, f) {
-  requireUser_(token);
+  requireAdmin_(token);
   const sheet = getFuncionariosSheet_();
 
   const nome = String(f.nome || '').trim();
@@ -975,6 +1041,7 @@ function saveFuncionario(token, f) {
   const dataDemissao = f.dataDemissao ? new Date(f.dataDemissao + 'T00:00:00') : '';
   const funcao = String(f.funcao || '').trim();
   const apelido = String(f.apelido || '').trim();
+  const email = String(f.email || '').trim().toLowerCase();
 
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -983,17 +1050,23 @@ function saveFuncionario(token, f) {
     const match   = (idParam && rowId === idParam) || (!idParam && rowNome === chaveOriginal);
     if (match) {
       sheet.getRange(i + 1, 1, 1, 5).setValues([[nome, dataAdmissao, dataDemissao, funcao, apelido]]);
-      return getFuncionarios(token);
+      sheet.getRange(i + 1, 12).setValue(email);
+      return getFuncionariosImpl_();
     }
   }
-  sheet.appendRow([nome, dataAdmissao, dataDemissao, funcao, apelido, Utilities.getUuid()]);
-  return getFuncionarios(token);
+  sheet.appendRow([nome, dataAdmissao, dataDemissao, funcao, apelido, Utilities.getUuid(), '', '', '', '', '', email]);
+  return getFuncionariosImpl_();
 }
 
 // Lê a planilha de RH da BRASAS e retorna os funcionários com unidade ONLINE
-// e status Ativo. Colunas: B=Unidade, C=Nome, J=DataAdmissão, K=Status.
+// e status Ativo. Colunas: B=Unidade, C=Nome, F=Função, G=Apelido, H=E-mail,
+// J=DataAdmissão, K=Status.
 function getFuncionariosRH(token) {
-  requireUser_(token);
+  requireAdmin_(token);
+  return lerFuncionariosRHOnlineAtivos_();
+}
+
+function lerFuncionariosRHOnlineAtivos_() {
   const ss = SpreadsheetApp.openById(RH_SS_ID);
   const sheet = ss.getSheets().filter(function(s) { return s.getSheetId() === RH_SHEET_GID; })[0];
   if (!sheet) throw new Error('Aba RH não encontrada (gid=' + RH_SHEET_GID + ').');
@@ -1002,31 +1075,65 @@ function getFuncionariosRH(token) {
   for (let i = 1; i < rows.length; i++) {
     const unidade     = String(rows[i][1] || '');
     const nome        = String(rows[i][2] || '').trim();
+    const funcao      = String(rows[i][5] || '').trim();
+    const apelido     = String(rows[i][6] || '').trim();
+    const email       = String(rows[i][7] || '').trim().toLowerCase();
     const dataAdmissao = rows[i][9];
     const status      = String(rows[i][10] || '').trim();
     if (!nome) continue;
     if (norm_(status) !== 'ativo') continue;
     if (unidade.toUpperCase().indexOf('ONLINE') === -1) continue;
-    out.push({ nome: nome, dataAdmissao: fmtData_(dataAdmissao) });
+    out.push({ nome: nome, funcao: funcao, apelido: apelido, email: email, dataAdmissao: fmtData_(dataAdmissao) });
   }
   out.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
   return out;
 }
 
-function saveCicloOverride(token, nome, cicloInicio, cicloFim) {
-  requireUser_(token);
+// Sincroniza o Cadastro de Funcionários (aba FUNCIONARIOS) com a planilha de
+// RH: atualiza admissão/função de quem já está cadastrado e adiciona quem
+// ainda não está. Não marca ninguém em Férias/Admissão/Demissão — isso
+// continua sendo sempre uma ação manual e separada em cada aba.
+function sincronizarFuncionariosRH(token) {
+  requireAdmin_(token);
+  const rh = lerFuncionariosRHOnlineAtivos_();
   const sheet = getFuncionariosSheet_();
   const rows = sheet.getDataRange().getValues();
-  const nomeNorm = norm_(nome);
+
+  const linhaPorNome = {};
   for (let i = 1; i < rows.length; i++) {
-    if (norm_(rows[i][0]) === nomeNorm) {
-      const ini = cicloInicio ? new Date(cicloInicio + 'T00:00:00') : '';
-      const fim = cicloFim   ? new Date(cicloFim   + 'T00:00:00') : '';
-      sheet.getRange(i + 1, 7, 1, 2).setValues([[ini, fim]]);
-      return getFeriasPagina(token);
-    }
+    const nome = String(rows[i][0] || '').trim();
+    if (nome) linhaPorNome[norm_(nome)] = i + 1;
   }
-  throw new Error('Funcionário não encontrado: ' + nome);
+
+  let adicionados = 0, atualizados = 0;
+  rh.forEach(function(p) {
+    const linha = linhaPorNome[norm_(p.nome)];
+    if (linha) {
+      const atual = sheet.getRange(linha, 1, 1, 5).getValues()[0];
+      const emailAtual = sheet.getRange(linha, 12).getValue();
+      const novaAdmissao = p.dataAdmissao ? new Date(p.dataAdmissao + 'T00:00:00') : atual[1];
+      const novaFuncao   = p.funcao || atual[3];
+      const novoApelido  = atual[4] || p.apelido;
+      const novoEmail    = emailAtual || p.email || '';
+      sheet.getRange(linha, 2, 1, 4).setValues([[novaAdmissao, atual[2], novaFuncao, novoApelido]]);
+      sheet.getRange(linha, 12).setValue(novoEmail);
+      atualizados++;
+    } else {
+      sheet.appendRow([
+        p.nome,
+        p.dataAdmissao ? new Date(p.dataAdmissao + 'T00:00:00') : '',
+        '',
+        p.funcao || '',
+        p.apelido || '',
+        Utilities.getUuid(),
+        '', '', '', '', '',
+        p.email || ''
+      ]);
+      adicionados++;
+    }
+  });
+
+  return { funcionarios: getFuncionariosImpl_(), adicionados: adicionados, atualizados: atualizados };
 }
 
 function getFeriasSheet_() {
@@ -1037,6 +1144,270 @@ function getFeriasSheet_() {
     sheet.appendRow(['Pessoa', 'Data_Inicio', 'Data_Fim', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID']);
   }
   return sheet;
+}
+
+// =============================================================================
+// PERÍODOS AQUISITIVOS
+// =============================================================================
+// Cada período aquisitivo são os 12 meses trabalhados que dão direito a 30
+// dias de férias; a data limite de gozo (quando esses dias têm que ser
+// usados, sob risco de pagamento em dobro) é sempre 12 meses após o fim do
+// período aquisitivo. Por padrão o sistema calcula automaticamente, a partir
+// da data de admissão, todos os períodos já completos e ainda com saldo em
+// aberto (podendo ser mais de um, se a pessoa acumulou períodos sem tirar
+// férias). Se alguém tiver períodos cadastrados manualmente aqui, eles
+// substituem totalmente o cálculo automático pra essa pessoa.
+
+function getPeriodosAquisitivosSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_PERIODOS_AQUISITIVOS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_PERIODOS_AQUISITIVOS);
+    sheet.appendRow(['Pessoa', 'Data_Inicio', 'Data_Fim', 'ID']);
+    migrarPeriodosAquisitivosLegado_(sheet);
+  }
+  return sheet;
+}
+
+// Migração única: converte o antigo override de ciclo (colunas
+// Ciclo_Inicio_Override/Ciclo_Fim_Override da aba FUNCIONARIOS, que guardava
+// o período concessivo — a janela de uso, não o aquisitivo) num período
+// aquisitivo equivalente na aba nova, pra quem já tinha um customizado.
+// O início do período aquisitivo é deduzido subtraindo 12 meses do início do
+// concessivo salvo (que corresponde ao fim do aquisitivo).
+function migrarPeriodosAquisitivosLegado_(sheet) {
+  const funcSheet = getOpSS_().getSheetByName(ABA_FUNCIONARIOS);
+  if (!funcSheet) return;
+  const rows = funcSheet.getDataRange().getValues();
+  const novas = [];
+  for (let i = 1; i < rows.length; i++) {
+    const nome = String(rows[i][0] || '').trim();
+    const overrideInicio = rows[i][6];
+    if (!nome || !overrideInicio) continue;
+    const aquisitivoFim = new Date(overrideInicio);
+    const aquisitivoInicio = addMeses_(aquisitivoFim, -12);
+    novas.push([nome, aquisitivoInicio, aquisitivoFim, Utilities.getUuid()]);
+  }
+  if (novas.length) sheet.getRange(2, 1, novas.length, 4).setValues(novas);
+}
+
+function periodoAquisitivoFromRow_(r) {
+  return {
+    id: String(r[3] || ''),
+    pessoa: String(r[0] || '').trim(),
+    dataInicio: fmtData_(r[1]),
+    dataFim: fmtData_(r[2])
+  };
+}
+
+// Sem checagem de admin — usada pelo admin (sidebar de Férias) e
+// internamente por Minhas Férias (aberto a qualquer funcionário, que só
+// enxerga os próprios períodos depois de filtrar por nome).
+function getPeriodosAquisitivosImpl_() {
+  const rows = getPeriodosAquisitivosSheet_().getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][0] || !rows[i][1] || !rows[i][2]) continue;
+    out.push(periodoAquisitivoFromRow_(rows[i]));
+  }
+  return out;
+}
+
+function getPeriodosAquisitivos(token) {
+  requireAdmin_(token);
+  return getPeriodosAquisitivosImpl_();
+}
+
+function savePeriodoAquisitivo(token, p) {
+  requireAdmin_(token);
+  const sheet = getPeriodosAquisitivosSheet_();
+
+  const pessoa = String(p.pessoa || '').trim();
+  const dataInicio = String(p.dataInicio || '').trim();
+  const dataFim = String(p.dataFim || '').trim();
+  if (!pessoa || !dataInicio || !dataFim) throw new Error('Informe a pessoa e o período.');
+  if (dataFim < dataInicio) throw new Error('O fim não pode ser antes do início.');
+  const ini = new Date(dataInicio + 'T00:00:00');
+  const fim = new Date(dataFim + 'T00:00:00');
+
+  if (p.id) {
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][3]) === String(p.id)) {
+        sheet.getRange(i + 1, 1, 1, 3).setValues([[pessoa, ini, fim]]);
+        return getFeriasPagina(token);
+      }
+    }
+    throw new Error('Período aquisitivo não encontrado.');
+  }
+  sheet.appendRow([pessoa, ini, fim, Utilities.getUuid()]);
+  return getFeriasPagina(token);
+}
+
+function deletePeriodoAquisitivo(token, id) {
+  requireAdmin_(token);
+  const sheet = getPeriodosAquisitivosSheet_();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][3]) === String(id)) {
+      sheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  return getFeriasPagina(token);
+}
+
+// =============================================================================
+// SOLICITAÇÕES DE FÉRIAS (autoatendimento do funcionário + aprovação)
+// =============================================================================
+// Qualquer funcionário autenticado cujo e-mail esteja vinculado a um
+// registro no Cadastro pode solicitar um período de férias. Fica "Pendente"
+// até um admin aprovar (o que cria automaticamente o período em FERIAS,
+// contando no saldo) ou recusar (com motivo).
+
+function getSolicitacoesSheet_() {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(ABA_SOLICITACOES_FERIAS);
+  if (!sheet) {
+    sheet = ss.insertSheet(ABA_SOLICITACOES_FERIAS);
+    sheet.appendRow(['Pessoa', 'Email', 'Data_Inicio', 'Data_Fim', 'Observacao', 'Status', 'Data_Solicitacao', 'Aprovado_Por', 'Data_Decisao', 'Motivo_Recusa', 'ID']);
+  }
+  return sheet;
+}
+
+function solicitacaoFromRow_(r) {
+  const dataInicio = fmtData_(r[2]);
+  const dataFim = fmtData_(r[3]);
+  return {
+    id: String(r[10] || ''),
+    pessoa: String(r[0] || '').trim(),
+    email: String(r[1] || '').trim().toLowerCase(),
+    dataInicio: dataInicio,
+    dataFim: dataFim,
+    dias: diasEntre_(dataInicio, dataFim),
+    observacao: String(r[4] || '').trim(),
+    status: String(r[5] || '').trim() || 'Pendente',
+    dataSolicitacao: fmtDataHora_(r[6]),
+    aprovadoPor: String(r[7] || '').trim(),
+    dataDecisao: fmtDataHora_(r[8]),
+    motivoRecusa: String(r[9] || '').trim()
+  };
+}
+
+function getSolicitacoesImpl_() {
+  const rows = getSolicitacoesSheet_().getDataRange().getValues();
+  const out = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (!rows[i][0] || !rows[i][2] || !rows[i][3]) continue;
+    out.push(solicitacaoFromRow_(rows[i]));
+  }
+  out.sort(function(a, b) { return (b.dataSolicitacao || '').localeCompare(a.dataSolicitacao || ''); });
+  return out;
+}
+
+// Todas as solicitações — visão do admin, pra aprovar/recusar.
+function getSolicitacoes(token) {
+  requireAdmin_(token);
+  return getSolicitacoesImpl_();
+}
+
+function resolverFuncionarioPorEmail_(email) {
+  const emailNorm = norm_(email);
+  if (!emailNorm) return null;
+  return getFuncionariosImpl_().filter(function(f) { return f.email && norm_(f.email) === emailNorm; })[0] || null;
+}
+
+// Funcionário solicita um período de férias — vira uma linha "Pendente" até
+// um admin decidir. Resolve automaticamente quem é a pessoa a partir do
+// e-mail da sessão (não do nome digitado), pra ninguém solicitar em nome de
+// outra pessoa.
+function solicitarFerias(token, payload) {
+  const user = requireUser_(token);
+  const meu = resolverFuncionarioPorEmail_(user.email);
+  if (!meu) throw new Error('Seu e-mail (' + user.email + ') não está vinculado a nenhum funcionário no Cadastro. Peça pro administrador vincular.');
+
+  const dataInicio = String(payload.dataInicio || '').trim();
+  const dataFim = String(payload.dataFim || '').trim();
+  if (!dataInicio || !dataFim) throw new Error('Informe o período desejado.');
+  if (dataFim < dataInicio) throw new Error('A data final não pode ser anterior à inicial.');
+  const observacao = String(payload.observacao || '').trim();
+
+  const sheet = getSolicitacoesSheet_();
+  sheet.appendRow([
+    meu.nome, user.email, new Date(dataInicio + 'T00:00:00'), new Date(dataFim + 'T00:00:00'),
+    observacao, 'Pendente', new Date(), '', '', '', Utilities.getUuid()
+  ]);
+  return getMinhaFeriasPagina(token);
+}
+
+function aprovarSolicitacao(token, id) {
+  const admin = requireAdmin_(token);
+  const sheet = getSolicitacoesSheet_();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][10]) === String(id)) {
+      const pessoa = String(rows[i][0] || '').trim();
+      const dataInicio = fmtData_(rows[i][2]);
+      const dataFim = fmtData_(rows[i][3]);
+      const observacao = String(rows[i][4] || '').trim();
+
+      sheet.getRange(i + 1, 6).setValue('Aprovado');
+      sheet.getRange(i + 1, 8).setValue(admin.email);
+      sheet.getRange(i + 1, 9).setValue(new Date());
+
+      // Aprovar já registra o período como férias efetivamente tiradas, pra
+      // contar automaticamente no saldo — sem precisar lançar de novo à mão.
+      getFeriasSheet_().appendRow([pessoa, new Date(dataInicio + 'T00:00:00'), new Date(dataFim + 'T00:00:00'), observacao, admin.email, new Date(), Utilities.getUuid()]);
+
+      return getSolicitacoesImpl_();
+    }
+  }
+  throw new Error('Solicitação não encontrada.');
+}
+
+function recusarSolicitacao(token, id, motivo) {
+  const admin = requireAdmin_(token);
+  const sheet = getSolicitacoesSheet_();
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][10]) === String(id)) {
+      sheet.getRange(i + 1, 6).setValue('Recusado');
+      sheet.getRange(i + 1, 8).setValue(admin.email);
+      sheet.getRange(i + 1, 9).setValue(new Date());
+      sheet.getRange(i + 1, 10).setValue(String(motivo || '').trim());
+      return getSolicitacoesImpl_();
+    }
+  }
+  throw new Error('Solicitação não encontrada.');
+}
+
+// Página de autoatendimento do funcionário: período aquisitivo, dias
+// restantes, histórico de férias tiradas e as próprias solicitações — nunca
+// depende do flag rastreadoFerias (isso é só sobre o que o admin optou por
+// acompanhar na tela dele; o funcionário sempre vê o próprio saldo real).
+function getMinhaFeriasPagina(token) {
+  const user = requireUser_(token);
+  const meu = resolverFuncionarioPorEmail_(user.email);
+  if (!meu) {
+    return { vinculado: false, email: user.email, nome: user.nome || '' };
+  }
+
+  const ferias = getFeriasImpl_();
+  const periodosManuais = getPeriodosAquisitivosImpl_();
+
+  const saldos = periodosDaPessoa_(meu.nome, ferias, periodosManuais)
+    .map(function(per) { return Object.assign({ dataAdmissao: meu.dataAdmissao }, per); });
+  const historico = ferias
+    .filter(function(f) { return norm_(f.pessoa) === norm_(meu.nome); })
+    .sort(function(a, b) { return (b.dataInicio || '').localeCompare(a.dataInicio || ''); });
+  const solicitacoes = getSolicitacoesImpl_()
+    .filter(function(s) { return norm_(s.email) === norm_(user.email); });
+
+  return {
+    vinculado: true,
+    nome: meu.nome, funcao: meu.funcao, apelido: meu.apelido, dataAdmissao: meu.dataAdmissao,
+    saldos: saldos, historico: historico, solicitacoes: solicitacoes
+  };
 }
 
 // Diferença de dias entre duas datas ISO (yyyy-MM-dd), inclusive nas duas pontas
@@ -1061,8 +1432,10 @@ function feriaFromRow_(r) {
   };
 }
 
-function getFerias(token) {
-  requireUser_(token);
+// Sem checagem de admin — usada pela aba Férias (admin), pelo Dashboard e
+// por Minhas Férias (ambos abertos a qualquer funcionário autenticado, que
+// só enxergam o histórico da própria pessoa depois de filtrar por nome).
+function getFeriasImpl_() {
   const rows = getFeriasSheet_().getDataRange().getValues();
   const out = [];
   for (let i = 1; i < rows.length; i++) {
@@ -1073,8 +1446,15 @@ function getFerias(token) {
   return out;
 }
 
+function getFerias(token) {
+  requireAdmin_(token);
+  return getFeriasImpl_();
+}
+
+// Cria/edita um período de férias já tirado — lançamento manual, feito pelo
+// admin (o fluxo do funcionário é sempre via solicitarFerias + aprovação).
 function saveFeria(token, f) {
-  const user  = requireUser_(token);
+  const user  = requireAdmin_(token);
   const sheet = getFeriasSheet_();
 
   const pessoa     = String(f.pessoa || '').trim();
@@ -1102,7 +1482,7 @@ function saveFeria(token, f) {
 }
 
 function deleteFeria(token, id) {
-  requireUser_(token);
+  requireAdmin_(token);
   const sheet = getFeriasSheet_();
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -1120,81 +1500,153 @@ function addMeses_(data, meses) {
   return d;
 }
 
-// Calcula o ciclo de férias em aberto (regra CLT: o período aquisitivo de 12
-// meses mais recente já concluído libera 30 dias, a serem usados nos 12 meses
-// seguintes — o período concessivo). Retorna o período concessivo atual, ou
-// null se ainda não completou 1 ano de casa (nenhum período aquisitivo
-// concluído ainda), ou se não há data de admissão cadastrada.
-function cicloFeriasAtual_(dataAdmissaoIso, hojeIso) {
-  if (!dataAdmissaoIso) return null;
-  const admissao = new Date(dataAdmissaoIso + 'T00:00:00');
-  const hoje = new Date(hojeIso + 'T00:00:00');
-
-  // n = quantos períodos aquisitivos de 12 meses já foram concluídos até hoje
-  let n = 0;
-  while (addMeses_(admissao, (n + 1) * 12) <= hoje) n++;
-  if (n === 0) return null;
-
-  // o período concessivo (onde os dias podem/devem ser usados) começa quando
-  // o n-ésimo período aquisitivo termina, e vai até o término do seguinte
-  return {
-    inicio: fmtData_(addMeses_(admissao, n * 12)),
-    fim: fmtData_(addMeses_(admissao, (n + 1) * 12))
-  };
-}
-
 // Para cada pessoa (cadastrada em FUNCIONARIOS e/ou com férias lançadas),
-// calcula o saldo de dias do ciclo de férias atualmente em aberto.
+// só os dados cadastrais + flags de rastreamento — usado por Cadastro,
+// Admissão e Demissão. O saldo de férias em si (períodos aquisitivos) está
+// em getFeriasSaldos, que é o que a sub-aba Férias usa.
 function getFeriasResumo(token) {
-  requireUser_(token);
-  const funcionarios = getFuncionarios(token);
-  const ferias = getFerias(token);
-  const hojeIso = fmtData_(new Date());
+  requireAdmin_(token);
+  const funcionarios = getFuncionariosImpl_();
+  const ferias = getFeriasImpl_();
 
   const pessoas = {};
   funcionarios.forEach(function(f) {
-    pessoas[norm_(f.nome)] = { nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, funcao: f.funcao, apelido: f.apelido, cicloInicioOverride: f.cicloInicioOverride || '', cicloFimOverride: f.cicloFimOverride || '' };
+    pessoas[norm_(f.nome)] = {
+      nome: f.nome, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, funcao: f.funcao, apelido: f.apelido,
+      rastreadoFerias: f.rastreadoFerias, rastreadoAdmissao: f.rastreadoAdmissao, rastreadoDemissao: f.rastreadoDemissao
+    };
   });
   ferias.forEach(function(f) {
     const k = norm_(f.pessoa);
-    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '', cicloInicioOverride: '', cicloFimOverride: '' };
+    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, dataAdmissao: '', dataDemissao: '', funcao: '', apelido: '', rastreadoFerias: true, rastreadoAdmissao: false, rastreadoDemissao: false };
   });
 
   return Object.keys(pessoas).map(function(k) {
     const p = pessoas[k];
-    const temOverride = p.cicloInicioOverride && p.cicloFimOverride;
-    const ciclo = temOverride
-      ? { inicio: p.cicloInicioOverride, fim: p.cicloFimOverride }
-      : cicloFeriasAtual_(p.dataAdmissao, hojeIso);
-    let diasTirados = 0;
-    if (ciclo) {
-      ferias.filter(function(f) {
-        return norm_(f.pessoa) === k && f.dataInicio >= ciclo.inicio && f.dataInicio < ciclo.fim;
-      }).forEach(function(f) { diasTirados += f.dias; });
-    }
     return {
       nome: p.nome,
       dataAdmissao: p.dataAdmissao,
       dataDemissao: p.dataDemissao,
       funcao: p.funcao,
       apelido: p.apelido,
-      cicloInicio: ciclo ? ciclo.inicio : '',
-      cicloFim: ciclo ? ciclo.fim : '',
-      diasTirados: ciclo ? diasTirados : null,
-      diasRestantes: ciclo ? Math.max(0, 30 - diasTirados) : null,
-      cicloCustomizado: !!temOverride,
-      cicloInicioOverride: p.cicloInicioOverride || '',
-      cicloFimOverride: p.cicloFimOverride || ''
+      rastreadoFerias: !!p.rastreadoFerias,
+      rastreadoAdmissao: !!p.rastreadoAdmissao,
+      rastreadoDemissao: !!p.rastreadoDemissao
     };
   }).sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
 }
 
-function getFeriasPagina(token) {
-  requireUser_(token);
+// Soma os dias de férias já tirados por uma pessoa dentro da janela de uso
+// (gozo) de um período aquisitivo: do fim do aquisitivo (quando os 30 dias
+// são liberados) até a data limite de gozo (12 meses depois).
+function diasTiradosNaJanela_(feriasPessoa, aquisitivoFim, dataLimiteGozo) {
+  let total = 0;
+  feriasPessoa.forEach(function(f) {
+    if (f.dataInicio >= aquisitivoFim && f.dataInicio < dataLimiteGozo) total += f.dias;
+  });
+  return total;
+}
+
+function periodoAquisitivoComSaldo_(dataInicio, dataFim, id, feriasPessoa) {
+  const dataLimiteGozo = fmtData_(addMeses_(new Date(dataFim + 'T00:00:00'), 12));
+  const diasTirados = diasTiradosNaJanela_(feriasPessoa, dataFim, dataLimiteGozo);
   return {
-    funcionarios: getFuncionarios(token),
-    ferias: getFerias(token),
+    id: id || '',
+    manual: !!id,
+    periodoAquisitivoInicio: dataInicio,
+    periodoAquisitivoFim: dataFim,
+    dataLimiteGozo: dataLimiteGozo,
+    diasTirados: diasTirados,
+    diasRestantes: Math.max(0, 30 - diasTirados)
+  };
+}
+
+// Calcula os períodos aquisitivos (com saldo) de UMA pessoa — reaproveitado
+// tanto pelo saldo geral do admin (getFeriasSaldos) quanto pela própria
+// visão do funcionário (getMinhaFeriasPagina). Não há cálculo automático a
+// partir da data de admissão — só entram aqui os períodos que alguém
+// cadastrou manualmente em PERIODOS_AQUISITIVOS (o admin decide quando abrir
+// um período novo, não o sistema sozinho).
+function periodosDaPessoa_(nome, ferias, periodosManuais) {
+  const k = norm_(nome);
+  const feriasPessoa = ferias.filter(function(f) { return norm_(f.pessoa) === k; });
+  const manuais = periodosManuais.filter(function(m) { return norm_(m.pessoa) === k; });
+
+  let periodos = manuais
+    .map(function(m) { return periodoAquisitivoComSaldo_(m.dataInicio, m.dataFim, m.id, feriasPessoa); })
+    .sort(function(a, b) { return a.periodoAquisitivoInicio.localeCompare(b.periodoAquisitivoInicio); });
+
+  if (!periodos.length) {
+    periodos = [{ id: '', manual: false, periodoAquisitivoInicio: '', periodoAquisitivoFim: '', dataLimiteGozo: '', diasTirados: null, diasRestantes: null }];
+  }
+  return periodos;
+}
+
+// Saldo de férias por pessoa rastreada em Férias (admin) — um item por
+// período aquisitivo em aberto (pode ser mais de um por pessoa).
+function getFeriasSaldos(token) {
+  requireAdmin_(token);
+  const funcionarios = getFuncionariosImpl_();
+  const ferias = getFeriasImpl_();
+  const periodosManuais = getPeriodosAquisitivosImpl_();
+
+  const pessoas = {};
+  funcionarios.forEach(function(f) {
+    pessoas[norm_(f.nome)] = { nome: f.nome, funcao: f.funcao, apelido: f.apelido, dataAdmissao: f.dataAdmissao, dataDemissao: f.dataDemissao, rastreadoFerias: f.rastreadoFerias };
+  });
+  ferias.forEach(function(f) {
+    const k = norm_(f.pessoa);
+    if (!pessoas[k]) pessoas[k] = { nome: f.pessoa, funcao: '', apelido: '', dataAdmissao: '', dataDemissao: '', rastreadoFerias: true };
+  });
+
+  const out = [];
+  Object.keys(pessoas).forEach(function(k) {
+    const p = pessoas[k];
+    if (!p.rastreadoFerias) return;
+    periodosDaPessoa_(p.nome, ferias, periodosManuais).forEach(function(per) {
+      out.push({
+        nome: p.nome, funcao: p.funcao, apelido: p.apelido, dataAdmissao: p.dataAdmissao, dataDemissao: p.dataDemissao,
+        id: per.id, manual: per.manual,
+        periodoAquisitivoInicio: per.periodoAquisitivoInicio, periodoAquisitivoFim: per.periodoAquisitivoFim,
+        dataLimiteGozo: per.dataLimiteGozo, diasTirados: per.diasTirados, diasRestantes: per.diasRestantes
+      });
+    });
+  });
+
+  out.sort(function(a, b) {
+    return a.nome.localeCompare(b.nome, 'pt-BR') || (a.periodoAquisitivoInicio || '').localeCompare(b.periodoAquisitivoInicio || '');
+  });
+  return out;
+}
+
+// Marca/desmarca o rastreamento de uma pessoa numa das 3 sub-abas
+// (Férias/Admissão/Demissão), independentemente das outras. Cadastrar
+// alguém no Cadastro de Funcionários não mexe nesses flags — a inclusão em
+// cada aba é sempre uma ação explícita e separada.
+function setRastreamento(token, nome, aba, valor) {
+  requireAdmin_(token);
+  const col = aba === 'ferias' ? 9 : aba === 'admissao' ? 10 : aba === 'demissao' ? 11 : null;
+  if (!col) throw new Error('Aba inválida: ' + aba);
+  const sheet = getFuncionariosSheet_();
+  const rows = sheet.getDataRange().getValues();
+  const nomeNorm = norm_(nome);
+  for (let i = 1; i < rows.length; i++) {
+    if (norm_(rows[i][0]) === nomeNorm) {
+      sheet.getRange(i + 1, col).setValue(!!valor);
+      return getFeriasPagina(token);
+    }
+  }
+  throw new Error('Funcionário não encontrado: ' + nome);
+}
+
+function getFeriasPagina(token) {
+  requireAdmin_(token);
+  return {
+    funcionarios: getFuncionariosImpl_(),
+    ferias: getFeriasImpl_(),
     resumo: getFeriasResumo(token),
+    feriasSaldos: getFeriasSaldos(token),
+    periodosAquisitivos: getPeriodosAquisitivosImpl_(),
     checklist: getChecklist(token)
   };
 }
@@ -1220,7 +1672,7 @@ function getChecklistSheet_() {
 // novo) e as marcações já feitas (só as que têm status — item sem marcação
 // não gera linha na planilha).
 function getChecklist(token) {
-  requireUser_(token);
+  requireAdmin_(token);
   const rows = getChecklistSheet_().getDataRange().getValues();
   const marcacoes = [];
   for (let i = 1; i < rows.length; i++) {
@@ -1237,7 +1689,7 @@ function getChecklist(token) {
 }
 
 function saveChecklistItem(token, nome, processo, item, status) {
-  const user  = requireUser_(token);
+  const user  = requireAdmin_(token);
   const sheet = getChecklistSheet_();
 
   const nomeNorm = norm_(nome);

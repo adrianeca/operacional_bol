@@ -17,7 +17,9 @@ Webapp em Google Apps Script para gestão operacional da unidade BOL.
 | `ESCALA_SABADO` | Escala de sábados (rodízio mensal) |
 | `AJUSTES_HORARIO` | Trocas, coberturas e ajustes pontuais de horário |
 | `FERIAS` | Períodos de férias já tirados por pessoa (criada automaticamente pelo `Code.gs`) |
-| `FUNCIONARIOS` | Nome + data de admissão/demissão de cada pessoa (criada automaticamente pelo `Code.gs`) |
+| `PERIODOS_AQUISITIVOS` | Períodos aquisitivos cadastrados manualmente (quando o cálculo automático pela data de admissão não serve) — criada automaticamente pelo `Code.gs` |
+| `FUNCIONARIOS` | Cadastro de funcionários: nome, admissão/demissão, função, apelido, e-mail (liga a pessoa ao login dela), flags de rastreamento — criada automaticamente pelo `Code.gs` |
+| `SOLICITACOES_FERIAS` | Pedidos de férias feitos pelos funcionários em Minhas Férias, com status Pendente/Aprovado/Recusado — criada automaticamente pelo `Code.gs` |
 
 ## Arquivos
 
@@ -32,17 +34,41 @@ Webapp em Google Apps Script para gestão operacional da unidade BOL.
 2. **Calendário** — Criação/edição de eventos, filtro por ano/mês
 3. **Rotinas** — Checklist por frequência (Diário, Semanal, Mensal...), com histórico em `ROTINAS_LOG`
 4. **Entregas** — Tabela anual editável com status por mês
-5. **Funcionários** — três sub-abas:
-   - *Férias*: períodos tirados por pessoa e saldo do ciclo atual (30 dias por ciclo de 12 meses a partir da admissão); períodos lançados aqui aparecem automaticamente no Calendário
-   - *Admissão*: funcionários ativos e suas datas de admissão
-   - *Demissão*: funcionários desligados e suas datas de admissão/demissão
-6. **Secretaria** — Horários fixos + Escala de sábado + Ajustes de horário
+5. **Funcionários** — quatro sub-abas:
+   - *Cadastro*: lista mestre de funcionários (nome, função, apelido, admissão, demissão), sincronizável com a planilha de RH (unidade ONLINE). Cadastrar alguém aqui **não** inclui a pessoa em nenhuma das outras sub-abas — isso é sempre feito manualmente, uma a uma
+   - *Férias*: um período aquisitivo é sempre 12 meses de casa que dão direito a 30 dias, a serem usados nos 12 meses seguintes (data limite de gozo). **Não há cálculo automático pela data de admissão** — cada período aquisitivo é cadastrado manualmente por pessoa (podendo ter mais de um por pessoa), e só aparece saldo depois que alguém cadastra o período. Fica em vermelho quando faltam 30 dias ou menos pra data limite e ainda há dias a tirar. Só mostra quem foi explicitamente adicionado nesta sub-aba; períodos de férias lançados aqui aparecem automaticamente no Calendário
+   - *Admissão*: checklist de admissão, só para quem foi explicitamente adicionado nesta sub-aba
+   - *Demissão*: checklist de demissão, só para quem foi explicitamente adicionado nesta sub-aba
 
-## Auth
+   As três últimas são independentes entre si — a inclusão em uma não afeta as outras.
+6. **Secretaria** — Horários fixos + Escala de sábado + Ajustes de horário (tipo livre — Troca/Atraso/Falta/Hora Extra ou outro texto — e status Pendente/A Confirmar/Confirmado/Realizado, com filtro de tipo e de status). Cada ajuste aceita um anexo opcional (atestado, documento etc.), enviado direto pro Drive
+7. **Minhas Férias** — autoatendimento do funcionário: vê o próprio período aquisitivo, data
+   limite de gozo e dias restantes, histórico de férias já tiradas, e pode solicitar um novo
+   período (fica "Pendente" até um admin aprovar ou recusar em Funcionários → Solicitações).
+   Aprovar já registra o período em `FERIAS` automaticamente.
+
+## Auth e permissões
 Autenticação via Hub BRASAS BI (token de sessão), mesmo padrão do app de Horas de Professores.
 Chave de acesso deste app: `operacionalbol` — precisa estar liberada na coluna `ACESSOS`
 da aba `SESSOES` da planilha do Hub para cada e-mail da equipe, senão o login barra com
 "sem permissão".
+
+Além disso, dentro do próprio Controle Operacional BOL há dois papéis:
+- **Admin** — e-mails na lista `ADMIN_EMAILS_` (`Code.gs`): veem todas as abas.
+- **Funcionário comum** — qualquer outro e-mail autenticado: só vê Dashboard, Rotinas e
+  Minhas Férias. As demais funções do backend exigem admin (`requireAdmin_`), então mesmo
+  chamando via console essas telas não abrem pra quem não está na lista.
+
+Pra "Minhas Férias" funcionar, a pessoa precisa ter o e-mail preenchido no Cadastro de
+Funcionários (campo E-mail, sincronizável da planilha de RH) — sem isso o funcionário vê um
+aviso pra pedir ao admin vincular o e-mail, em vez dos próprios dados.
+
+## Anexos de Ajustes de horário
+Arquivos enviados em Secretaria → Ajustes de horário (atestados, documentos etc.) são salvos
+na pasta do Drive `1IRDW35AMspLcsIf3ke-DvWbxRbJtI4nP` (constante `ANEXOS_AJUSTES_FOLDER_ID`
+em `Code.gs`) e compartilhados com "qualquer pessoa do domínio com o link" pra abrir direto
+pelo ícone 📎 na tabela. Na primeira vez que isso rodar, o Apps Script vai pedir autorização
+extra (escopo do Google Drive) — é só aceitar.
 
 ## Deploy
 No Apps Script vinculado à planilha `Controle Operacional BOL` (ID no topo deste README),
