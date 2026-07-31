@@ -114,6 +114,36 @@ function getUserFromHub(token) {
   return requireUser_(token);
 }
 
+// Tudo que a tela precisa pra abrir, numa chamada só. Antes o front fazia 11
+// chamadas em fila (cada uma esperando a anterior voltar) e o painel só abria
+// depois da última — além de lento, qualquer engasgo no meio deixava o app
+// preso no "Carregando...". Como requireUser_ e getOpSS_ são cacheados por
+// execução, juntar tudo aqui também abre a planilha bem menos vezes (era isso
+// que causava o RESOURCE_EXHAUSTED).
+function getBootstrap(token) {
+  const user = requireUser_(token);
+  const out = {
+    user: user,
+    dashboard: getDashboard(token),
+    rotinas: getRotinas(token),
+    minhasFerias: getMinhaFeriasPagina(token)
+  };
+  if (user.isAdmin) {
+    out.eventos      = getEventos(token);
+    out.entregas     = getEntregas(token);
+    out.secretaria   = getSecretaria(token);
+    out.ferias       = getFeriasPagina(token);
+    out.solicitacoes = getSolicitacoes(token);
+    out.projetos     = getProjetosPagina(token);
+    // A lista do RH vem de outra planilha — se ela falhar, o painel abre
+    // mesmo assim (o seletor de novo funcionário fica com "Carregando lista
+    // RH...", igual ao comportamento antigo).
+    try { out.funcionariosRH = getFuncionariosRH(token); }
+    catch (e) { out.funcionariosRH = []; }
+  }
+  return out;
+}
+
 // Cacheados por execução: requireUser_ roda no início de toda função exposta,
 // inclusive nas chamadas aninhadas (ex.: getDashboard chama getHorarios, que
 // chama requireUser_ de novo). Sem isso, um único carregamento do painel abre
@@ -1097,7 +1127,9 @@ function lerFuncionariosRHOnlineAtivos_() {
     const nome        = String(rows[i][2] || '').trim();
     const funcao      = String(rows[i][5] || '').trim();
     const apelido     = String(rows[i][6] || '').trim();
-    const email       = String(rows[i][7] || '').trim().toLowerCase();
+    // Coluna Z ("E-mail BRASAS") — é o e-mail institucional, o mesmo usado no
+    // login do Hub. A coluna H ("E-MAIL") às vezes guarda e-mail pessoal.
+    const email       = String(rows[i][25] || '').trim().toLowerCase();
     const dataAdmissao = rows[i][9];
     const status      = String(rows[i][10] || '').trim();
     if (!nome) continue;
@@ -1110,13 +1142,30 @@ function lerFuncionariosRHOnlineAtivos_() {
 }
 
 // Sincroniza o Cadastro de Funcionários (aba FUNCIONARIOS) com a planilha de
-// RH: atualiza admissão/função de quem já está cadastrado e adiciona quem
-// ainda não está. Não marca ninguém em Férias/Admissão/Demissão — isso
+// RH: atualiza admissão/função/e-mail de quem já está cadastrado e adiciona
+// quem ainda não está. Não marca ninguém em Férias/Admissão/Demissão — isso
 // continua sendo sempre uma ação manual e separada em cada aba.
+// Roda dentro de uma trava: sem ela, cliques repetidos no botão viravam
+// execuções simultâneas que liam a aba no mesmo estado e cada uma adicionava
+// as mesmas pessoas de novo — foi assim que o cadastro chegou a ter a mesma
+// pessoa 5 vezes. A trava faz o segundo clique esperar o primeiro terminar
+// (e aí ele já encontra todo mundo cadastrado e não adiciona nada).
 function sincronizarFuncionariosRH(token) {
   requireAdmin_(token);
-  const rh = lerFuncionariosRHOnlineAtivos_();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(120000);
+  try {
+    return sincronizarFuncionariosRHImpl_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function sincronizarFuncionariosRHImpl_() {
   const sheet = getFuncionariosSheet_();
+  const duplicatasRemovidas = removerFuncionariosDuplicados_(sheet);
+
+  const rh = lerFuncionariosRHOnlineAtivos_();
   const rows = sheet.getDataRange().getValues();
 
   const linhaPorNome = {};
@@ -1126,20 +1175,12 @@ function sincronizarFuncionariosRH(token) {
   }
 
   let adicionados = 0, atualizados = 0;
+  const novas = [];
   rh.forEach(function(p) {
-    const linha = linhaPorNome[norm_(p.nome)];
-    if (linha) {
-      const atual = sheet.getRange(linha, 1, 1, 5).getValues()[0];
-      const emailAtual = sheet.getRange(linha, 12).getValue();
-      const novaAdmissao = p.dataAdmissao ? new Date(p.dataAdmissao + 'T00:00:00') : atual[1];
-      const novaFuncao   = p.funcao || atual[3];
-      const novoApelido  = atual[4] || p.apelido;
-      const novoEmail    = emailAtual || p.email || '';
-      sheet.getRange(linha, 2, 1, 4).setValues([[novaAdmissao, atual[2], novaFuncao, novoApelido]]);
-      sheet.getRange(linha, 12).setValue(novoEmail);
-      atualizados++;
-    } else {
-      sheet.appendRow([
+    const chave = norm_(p.nome);
+    const linha = linhaPorNome[chave];
+    if (linha === undefined) {
+      novas.push([
         p.nome,
         p.dataAdmissao ? new Date(p.dataAdmissao + 'T00:00:00') : '',
         '',
@@ -1149,11 +1190,55 @@ function sincronizarFuncionariosRH(token) {
         '', '', '', '', '',
         p.email || ''
       ]);
+      linhaPorNome[chave] = -1; // se o RH repetir o mesmo nome, não duplica
       adicionados++;
+      return;
     }
+    if (linha === -1) return; // nome repetido dentro do próprio RH
+    const atual = sheet.getRange(linha, 1, 1, 5).getValues()[0];
+    const emailAtual = sheet.getRange(linha, 12).getValue();
+    const novaAdmissao = p.dataAdmissao ? new Date(p.dataAdmissao + 'T00:00:00') : atual[1];
+    const novaFuncao   = p.funcao || atual[3];
+    const novoApelido  = atual[4] || p.apelido;
+    const novoEmail    = emailAtual || p.email || '';
+    sheet.getRange(linha, 2, 1, 4).setValues([[novaAdmissao, atual[2], novaFuncao, novoApelido]]);
+    sheet.getRange(linha, 12).setValue(novoEmail);
+    atualizados++;
   });
 
-  return { funcionarios: getFuncionariosImpl_(), adicionados: adicionados, atualizados: atualizados };
+  // Uma escrita só pra todas as linhas novas — bem mais rápido que appendRow
+  // por pessoa, o que também encurta a janela pra alguém clicar de novo.
+  if (novas.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, novas.length, novas[0].length).setValues(novas);
+  }
+
+  return {
+    funcionarios: getFuncionariosImpl_(),
+    adicionados: adicionados,
+    atualizados: atualizados,
+    duplicatasRemovidas: duplicatasRemovidas
+  };
+}
+
+// Apaga cadastros repetidos (mesmo nome normalizado), mantendo a primeira
+// linha de cada nome. As duplicatas nasceram de cliques simultâneos no
+// Sincronizar, então são sempre as linhas mais novas — appendadas depois da
+// original, sem marcação de rastreamento feita à mão.
+function removerFuncionariosDuplicados_(sheet) {
+  const rows = sheet.getDataRange().getValues();
+  const vistos = {};
+  const excluir = [];
+  for (let i = 1; i < rows.length; i++) {
+    const chave = norm_(rows[i][0]);
+    if (!chave) continue;
+    if (vistos[chave]) excluir.push(i + 1);
+    else vistos[chave] = true;
+  }
+  // De baixo pra cima, senão cada exclusão deslocaria os índices seguintes.
+  for (let k = excluir.length - 1; k >= 0; k--) {
+    sheet.deleteRow(excluir[k]);
+  }
+  return excluir.length;
 }
 
 const FERIAS_HEADERS_ = ['Pessoa', 'Data_Inicio', 'Data_Fim', 'Observacao', 'Criado_Por', 'Criado_Em', 'ID', 'Periodo_Aquisitivo_ID'];
@@ -1992,102 +2077,12 @@ function moverCartaoProjeto(token, cartaoId, colunaDestinoId, idsOrdenadosDestin
   return getProjetosPagina(token);
 }
 
-// Seed único: registra as férias já cumpridas informadas em 2026. Rode
-// manualmente uma vez pelo editor do Apps Script (menu Executar →
-// popularFeriasIniciais). Pode rodar de novo sem medo: períodos já existentes
-// (mesma pessoa + mesmo início) não são duplicados.
-function popularFeriasIniciais() {
-  const sheet = getFeriasSheet_();
-  const rows  = sheet.getDataRange().getValues();
-
-  const existentes = new Set();
-  for (let i = 1; i < rows.length; i++) {
-    existentes.add(norm_(rows[i][0]) + '|' + fmtData_(rows[i][1]));
-  }
-
-  const periodos = [
-    ['Natasha', '2026-01-05', '2026-01-12'],
-    ['Elaine',  '2026-03-16', '2026-03-28'],
-    ['Aline',   '2026-03-09', '2026-03-18'],
-    ['Germana', '2026-03-16', '2026-03-29'],
-    ['Rafaela', '2026-04-06', '2026-04-11'],
-    ['Mel',     '2026-04-06', '2026-04-19'],
-    ['Natasha', '2026-05-11', '2026-05-15'],
-    ['Rosana',  '2026-05-18', '2026-05-31'],
-    ['Aline',   '2026-06-02', '2026-06-11'],
-    ['Bruna',   '2026-08-10', '2026-08-14'],
-    ['Elaine',  '2026-09-21', '2026-10-04'],
-    ['Nayara',  '2026-10-14', '2026-10-28']
-  ];
-
-  let adicionadas = 0;
-  periodos.forEach(function(p) {
-    const chave = norm_(p[0]) + '|' + p[1];
-    if (existentes.has(chave)) return;
-    sheet.appendRow([p[0], new Date(p[1] + 'T00:00:00'), new Date(p[2] + 'T00:00:00'), '', '', new Date(), Utilities.getUuid()]);
-    existentes.add(chave);
-    adicionadas++;
-  });
-
-  Logger.log(adicionadas + ' períodos de férias adicionados.');
-  return adicionadas;
-}
-
-// Seed único: registra funcionários (equipe administrativa ativa da unidade
-// ONLINE + algumas professoras já desligadas), conforme a aba "RJ - UNIDADES"
-// da planilha de RH da BRASAS — nome, apelido e função copiados literalmente
-// das colunas C/G/F de lá, sem reformatar capitalização. Rode manualmente uma
-// vez pelo editor do Apps Script (menu Executar → popularFuncionariosIniciais).
-// Pode rodar de novo sem medo: nomes já cadastrados não são sobrescritos.
-function popularFuncionariosIniciais() {
-  const sheet = getFuncionariosSheet_();
-  const rows  = sheet.getDataRange().getValues();
-
-  const existentes = new Set();
-  for (let i = 1; i < rows.length; i++) {
-    existentes.add(norm_(rows[i][0]));
-  }
-
-  const funcionarios = [
-    { nome: 'Natasha', dataAdmissao: '2016-05-11', funcao: 'SUPERVISOR ADMINISTRATIVO' },
-    { nome: 'Elaine',  dataAdmissao: '2012-02-01', funcao: 'SECRETARIA' },
-    { nome: 'Aline',   dataAdmissao: '2014-08-14', funcao: 'ASSISTENTE OPERACIONAL' },
-    { nome: 'Germana', dataAdmissao: '2016-02-01', funcao: 'COORDENADOR' },
-    { nome: 'Rafaela', dataAdmissao: '2023-01-02', funcao: 'SECRETARIA' },
-    { nome: 'Mel',     dataAdmissao: '2011-02-10', funcao: 'COORDENADOR' },
-    { nome: 'Rosana',  dataAdmissao: '2022-01-26', funcao: 'SECRETARIA' },
-    { nome: 'Bruna',   dataAdmissao: '2022-02-04', funcao: 'SECRETARIA' },
-    { nome: 'Nayara',  dataAdmissao: '2023-08-01', funcao: 'SECRETARIA' },
-    // Desligadas
-    { nome: 'Alana Tomazetti Carvalho',          apelido: 'Avril',   dataAdmissao: '2024-02-05', dataDemissao: '2025-07-03', funcao: 'PROFESSOR' },
-    { nome: 'Caio Mascheroni Costa Gonçalves',   apelido: 'Fred',    dataAdmissao: '2023-02-01', dataDemissao: '2025-12-16', funcao: 'PROFESSOR' },
-    { nome: 'Carolina Mourão Mello',             apelido: 'Phoenix', dataAdmissao: '2025-02-03', dataDemissao: '2025-12-17', funcao: 'PROFESSOR' },
-    { nome: 'Larissa da Silva Cury',             apelido: 'Cury',    dataAdmissao: '2025-08-01', dataDemissao: '2026-06-01', funcao: 'PROFESSOR' },
-    // Novas, vindas junto com o checklist de admissão
-    { nome: 'Fairuzz Jabbour',          dataAdmissao: '2025-08-01' },
-    { nome: 'Lucas Ventura dos Santos', dataAdmissao: '2026-02-03' },
-    { nome: 'Taiza Aguiar Ferreira',    dataAdmissao: '2026-06-01' }
-  ];
-
-  let adicionadas = 0;
-  funcionarios.forEach(function(f) {
-    const chave = norm_(f.nome);
-    if (existentes.has(chave)) return;
-    sheet.appendRow([
-      f.nome,
-      new Date(f.dataAdmissao + 'T00:00:00'),
-      f.dataDemissao ? new Date(f.dataDemissao + 'T00:00:00') : '',
-      f.funcao || '',
-      f.apelido || '',
-      Utilities.getUuid()
-    ]);
-    existentes.add(chave);
-    adicionadas++;
-  });
-
-  Logger.log(adicionadas + ' funcionários adicionados.');
-  return adicionadas;
-}
+// Os seeds popularFeriasIniciais e popularFuncionariosIniciais foram removidos
+// depois de executados (julho/2026): eles usavam nomes curtos ("Natasha",
+// "Elaine"), e o cadastro migrou pra nomes completos — rodar de novo passaria
+// pela checagem de duplicata sem casar nada e recriaria tudo em dobro. Além
+// disso, como toda função global sem checagem de token, ficavam chamáveis por
+// qualquer pessoa via google.script.run. O histórico está no git.
 
 // Marcações trazidas dos controles de admissão/desligamento: valores na mesma
 // ordem de CHECKLIST_ADMISSAO_ITENS (os 10 primeiros itens vinham como

@@ -234,6 +234,8 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
   color:var(--gray-500);cursor:pointer;transition:border-color .15s,color .15s;
 }
 .btn-ghost:hover {border-color:var(--gray-300);color:var(--navy-800)}
+.btn-ghost:disabled {opacity:.55;cursor:progress}
+.btn-ghost:disabled:hover {border-color:var(--gray-200);color:inherit}
 .btn-sm {padding:6px 12px;font-size:.78rem}
 .btn-danger {background:var(--danger-600)}
 .btn-danger:hover {background:var(--danger-500)}
@@ -660,7 +662,7 @@ select.status-select {
               <div class="card-sub" style="margin:0">Lista mestre, sincronizada da planilha de RH (unidade ONLINE) · cadastrar aqui não inclui a pessoa em Férias, Admissão ou Demissão — isso é feito separadamente em cada aba</div>
             </div>
             <div style="display:flex;gap:8px">
-              <button class="btn-ghost" onclick="sincronizarRH_()">Sincronizar com RH</button>
+              <button id="btnSincRH" class="btn-ghost" onclick="sincronizarRH_()">Sincronizar</button>
               <button class="btn" onclick="abrirFuncionarioModal()">+ Nova pessoa</button>
             </div>
           </div>
@@ -1288,68 +1290,105 @@ var state = { user:null, dashboard:null, eventos:[], rotinas:[], entregas:[], se
 // demais telas dependem de dados que o backend recusa pra quem não está em
 // ADMIN_EMAILS_ (ver requireAdmin_ no Code.gs), então nem tentamos carregar.
 
+// Enquanto a tela de carregamento está no ar não existe nada pra clicar, então
+// um erro de JS não tratado deixava o app preso no spinner sem explicação. Se
+// isso acontecer antes do painel abrir, mostramos o erro em vez de travar.
+window.onerror = function(msg, arquivo, linha) {
+  var carregando = document.getElementById('screenLoading');
+  if (carregando && carregando.style.display !== 'none') {
+    showError(new Error(msg + ' (linha ' + linha + ')'));
+  }
+  return false; // não engole o erro: o console continua recebendo o stack
+};
+
 window.onload = function() {
   if (!TOKEN) { window.top.location.href = HUB_URL; return; }
   show('screenLoading');
-  google.script.run.withSuccessHandler(onUserLoaded).withFailureHandler(showError).getUserFromHub(TOKEN);
+  armarVigiaCarregamento_();
+  google.script.run.withSuccessHandler(onBootstrap).withFailureHandler(showError).getBootstrap(TOKEN);
 };
 
-function onUserLoaded(user) {
-  state.user = user;
-  document.getElementById('hNome').textContent  = user.nome || user.email;
-  document.getElementById('hEmail').textContent = user.email;
+// Cão de guarda: se o servidor não responder o bootstrap em tempo razoável,
+// mostra um erro em vez de deixar o spinner rodando pra sempre.
+var etapaTimer_ = null;
+var ETAPA_LIMITE_MS_ = 90000;
+
+function armarVigiaCarregamento_() {
+  clearTimeout(etapaTimer_);
+  etapaTimer_ = setTimeout(function() {
+    showError(new Error(
+      'O servidor não respondeu em ' + (ETAPA_LIMITE_MS_ / 1000) + ' segundos. ' +
+      'Recarregue a página; se continuar, avise o administrador.'
+    ));
+  }, ETAPA_LIMITE_MS_);
+}
+
+// Uma chamada só (getBootstrap no Code.gs) traz tudo que a tela precisa —
+// antes eram 11 chamadas em fila, e qualquer engasgo no meio deixava o app
+// preso no "Carregando..." sem explicação.
+function onBootstrap(d) {
+  clearTimeout(etapaTimer_);
+  state.user = d.user;
+  document.getElementById('hNome').textContent  = d.user.nome || d.user.email;
+  document.getElementById('hEmail').textContent = d.user.email;
   aplicarPermissoesNav_();
-  google.script.run.withSuccessHandler(function(d){ state.dashboard = d; loadRotinas(); }).withFailureHandler(showError).getDashboard(TOKEN);
+
+  state.dashboard    = d.dashboard;
+  state.rotinas      = d.rotinas;
+  state.minhasFerias = d.minhasFerias;
+  if (d.user.isAdmin) {
+    state.eventos        = d.eventos;
+    state.entregas       = d.entregas;
+    state.secretaria     = d.secretaria;
+    state.ferias         = d.ferias;
+    state.funcionariosRH = d.funcionariosRH || [];
+    state.solicitacoes   = d.solicitacoes;
+    state.projetos       = d.projetos;
+  }
+  onAllLoaded();
 }
-function loadRotinas() {
-  google.script.run.withSuccessHandler(function(d){ state.rotinas = d; loadMinhasFerias(); }).withFailureHandler(showError).getRotinas(TOKEN);
-}
-function loadMinhasFerias() {
-  google.script.run
-    .withSuccessHandler(function(d){ state.minhasFerias = d; state.user.isAdmin ? loadEventos() : onAllLoaded(); })
-    .withFailureHandler(showError)
-    .getMinhaFeriasPagina(TOKEN);
-}
-function loadEventos() {
-  google.script.run.withSuccessHandler(function(d){ state.eventos = d; loadEntregas(); }).withFailureHandler(showError).getEventos(TOKEN);
-}
-function loadEntregas() {
-  google.script.run.withSuccessHandler(function(d){ state.entregas = d; loadSecretaria(); }).withFailureHandler(showError).getEntregas(TOKEN);
-}
-function loadSecretaria() {
-  google.script.run.withSuccessHandler(function(d){ state.secretaria = d; loadFerias(); }).withFailureHandler(showError).getSecretaria(TOKEN);
-}
-function loadFerias() {
-  google.script.run.withSuccessHandler(function(d){ state.ferias = d; loadFuncionariosRH(); }).withFailureHandler(showError).getFeriasPagina(TOKEN);
-}
-function loadFuncionariosRH() {
-  google.script.run
-    .withSuccessHandler(function(d){ state.funcionariosRH = d; loadSolicitacoes(); })
-    .withFailureHandler(function(){ state.funcionariosRH = []; loadSolicitacoes(); })
-    .getFuncionariosRH(TOKEN);
-}
-function loadSolicitacoes() {
-  google.script.run.withSuccessHandler(function(d){ state.solicitacoes = d; loadProjetos(); }).withFailureHandler(showError).getSolicitacoes(TOKEN);
-}
-function loadProjetos() {
-  google.script.run.withSuccessHandler(function(d){ state.projetos = d; onAllLoaded(); }).withFailureHandler(showError).getProjetosPagina(TOKEN);
+
+// Cada painel é desenhado isolado: antes, uma exceção em qualquer render
+// interrompia onAllLoaded antes de esconder o "Carregando...", e o app ficava
+// preso no spinner pra sempre, sem nada na tela dizendo o motivo. Agora um
+// painel quebrado não impede os outros de abrir — e a falha é dita em voz alta.
+function renderSeguro_(nome, fn) {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    console.error('Falha ao desenhar ' + nome + ':', e);
+    return nome + ': ' + ((e && e.message) ? e.message : String(e));
+  }
 }
 
 function onAllLoaded() {
-  renderDashboard();
-  renderRotinas();
-  renderMinhasFerias();
+  clearTimeout(etapaTimer_);
+  var falhas = [
+    renderSeguro_('Dashboard', renderDashboard),
+    renderSeguro_('Rotinas', renderRotinas),
+    renderSeguro_('Minhas Férias', renderMinhasFerias)
+  ];
+
   if (state.user.isAdmin) {
-    renderCalendario();
-    renderEntregasFiltros();
-    renderEntregas();
-    renderSecretaria();
-    renderFuncionariosPagina();
-    renderSolicitacoesSub_();
-    renderProjetos();
+    falhas = falhas.concat([
+      renderSeguro_('Calendário', renderCalendario),
+      renderSeguro_('Entregas (filtros)', renderEntregasFiltros),
+      renderSeguro_('Entregas', renderEntregas),
+      renderSeguro_('Secretaria', renderSecretaria),
+      renderSeguro_('Funcionários', renderFuncionariosPagina),
+      renderSeguro_('Solicitações', renderSolicitacoesSub_),
+      renderSeguro_('Projetos', renderProjetos)
+    ]);
   }
+
   hideAll();
   document.getElementById('screenMain').style.display = 'flex';
+
+  falhas = falhas.filter(function(f) { return f; });
+  if (falhas.length) {
+    showToast('Erro ao carregar: ' + falhas.join(' | '), 'error', 15000);
+  }
 }
 
 // ── TABS ──────────────────────────────────────────────
@@ -2506,12 +2545,14 @@ function recusarSolicitacao_(id) {
     .recusarSolicitacao(TOKEN, id, motivo);
 }
 
+// Só o Cadastro de Funcionários (aba FUNCIONARIOS, sincronizada com a planilha
+// de RH). Antes esta lista também trazia as tags de ajuste de horário, rotinas
+// e escala de sábado, o que enchia o seletor de apelidos ("Aline", "Rafa"),
+// duplas ("Nayara / Rosana") e rótulos que nem são pessoa ("Feriado").
 function pessoasConhecidasFerias_() {
-  var set = {};
-  (state.ferias.funcionarios || []).forEach(function(f) { set[f.nome] = true; });
-  (state.ferias.resumo || []).forEach(function(r) { set[r.nome] = true; });
-  getTodasTagsConhecidas_().forEach(function(t) { set[t] = true; });
-  return Object.keys(set).sort();
+  return (state.ferias.funcionarios || [])
+    .map(function(f) { return f.nome; })
+    .sort(function(a, b) { return a.localeCompare(b, 'pt-BR'); });
 }
 
 var feriaEditId = null;
@@ -2686,14 +2727,25 @@ function removerTrack_(nome, aba) {
     .setRastreamento(TOKEN, nome, aba, false);
 }
 
+// O botão fica travado e mudo em "Sincronizando..." enquanto roda — sem isso,
+// a demora convidava a clicar de novo, e cada clique extra virava uma execução
+// simultânea duplicando o cadastro (o backend também se protege com uma trava).
 function sincronizarRH_() {
+  var btn = document.getElementById('btnSincRH');
+  if (btn.disabled) return; // já tem uma sincronização em andamento
+  btn.disabled = true;
+  btn.textContent = 'Sincronizando...';
+  function restaurar() { btn.disabled = false; btn.textContent = 'Sincronizar'; }
   google.script.run
     .withSuccessHandler(function(d) {
       recarregarFerias_(function() {
-        showToast('Sincronizado: ' + d.adicionados + ' nova(s), ' + d.atualizados + ' atualizada(s).', 'success');
+        restaurar();
+        var msg = 'Sincronizado: ' + d.adicionados + ' nova(s), ' + d.atualizados + ' atualizada(s).';
+        if (d.duplicatasRemovidas) msg += ' Removidas ' + d.duplicatasRemovidas + ' duplicada(s).';
+        showToast(msg, 'success');
       });
     })
-    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message || err), 'error'); })
+    .withFailureHandler(function(err) { restaurar(); showToast('Erro: ' + (err.message || err), 'error'); })
     .sincronizarFuncionariosRH(TOKEN);
 }
 
@@ -3442,17 +3494,18 @@ function hideAll() {
 }
 
 function showError(err) {
+  clearTimeout(etapaTimer_);
   show('screenError');
   document.getElementById('errorMsg').textContent = (err && err.message) ? err.message : String(err);
 }
 
 var toastTimer = null;
-function showToast(msg, type) {
+function showToast(msg, type, duracaoMs) {
   var el = document.getElementById('toast');
   el.textContent = msg;
   el.className = 'toast ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(function() { el.className = 'toast'; }, 3000);
+  toastTimer = setTimeout(function() { el.className = 'toast'; }, duracaoMs || 3000);
 }
 </script>
 </body>
