@@ -212,6 +212,34 @@ body{font-family:var(--font);background:var(--gray-100);color:var(--navy-800);mi
 .status-pill.nao-aplica{background:var(--gray-100);color:var(--gray-500)}
 .status-pill.tipo-info  {background:var(--navy-100);color:var(--navy-600)}
 
+/* ── Férias: semáforo da data limite de gozo ── */
+.fe-stats {display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.fe-stat {
+  flex:1;min-width:150px;background:var(--white);border:1px solid var(--gray-200);
+  border-left-width:4px;border-radius:10px;padding:10px 14px;
+}
+.fe-stat.critico  {border-left-color:var(--danger-500)}
+.fe-stat.atencao  {border-left-color:var(--warning-500)}
+.fe-stat.ok       {border-left-color:var(--success-500)}
+.fe-stat.agendado {border-left-color:var(--navy-400)}
+.fe-stat.sem      {border-left-color:var(--gray-300)}
+.fe-stat-num {font-size:1.65rem;font-weight:700;line-height:1.15;color:var(--navy-800)}
+.fe-stat-label {font-size:.72rem;color:var(--gray-500);font-weight:600;display:flex;align-items:center;gap:6px;margin-top:2px}
+.fe-dot {width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.fe-stat.critico .fe-dot  {background:var(--danger-500)}
+.fe-stat.atencao .fe-dot  {background:var(--warning-500)}
+.fe-stat.ok .fe-dot       {background:var(--success-500)}
+.fe-stat.agendado .fe-dot {background:var(--navy-400)}
+.fe-stat.sem .fe-dot      {background:var(--gray-300)}
+.fe-limite {display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.fe-limite-data {font-size:.82rem;white-space:nowrap}
+.fe-saldo {display:flex;align-items:center;gap:8px;white-space:nowrap}
+.fe-barra {width:84px;height:6px;border-radius:999px;background:var(--gray-200);overflow:hidden;flex-shrink:0;display:flex;gap:2px}
+.fe-barra-fill {height:100%;border-radius:999px;background:var(--navy-500)}
+.fe-barra-agendado {height:100%;border-radius:999px;background:var(--navy-200)}
+.fe-saldo-txt {font-size:.75rem;color:var(--gray-500)}
+.fe-saldo-txt strong {color:var(--navy-800)}
+
 .filter-row {display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
 .select-input, .text-input {
   padding:8px 12px;border:1.5px solid var(--gray-200);border-radius:8px;
@@ -680,13 +708,14 @@ select.status-select {
           <div class="section-head">
             <div>
               <div class="card-title" style="margin-bottom:2px">Saldo de férias</div>
-              <div class="card-sub" style="margin:0">Ciclo de 12 meses · 30 dias por ciclo concluído · clique no nome para ver o histórico</div>
+              <div class="card-sub" style="margin:0">Cada linha é um período aquisitivo · ordenado pelo prazo da data limite de gozo · clique no nome para ver o histórico</div>
             </div>
             <div style="display:flex;gap:8px">
               <button class="btn btn-secondary" onclick="abrirTrackModal_('ferias')">+ Adicionar pessoa</button>
               <button class="btn" onclick="abrirFeriaModal()">+ Novo período</button>
             </div>
           </div>
+          <div class="fe-stats" id="feStats"></div>
           <table class="data-table" id="feResumoTable"></table>
         </div>
       </div>
@@ -2003,25 +2032,115 @@ function periodoUrgente_(p) {
   return dias !== null && dias <= 30;
 }
 
+// Faixa do semáforo de um período: 'vencido' (limite passou e ainda há dias
+// sem agendar), 'critico' (≤30 dias), 'atencao' (≤90), 'ok' (folga),
+// 'agendado' (sem dias soltos, mas parte ainda é agendamento futuro),
+// 'sem' (nenhum período cadastrado) ou 'concluido' (tudo já gozado).
+// diasRestantes já desconta as férias agendadas — o alerta mede só o que
+// ainda está SEM programação.
+function faixaPrazo_(r) {
+  if (r.diasRestantes === null) return 'sem';
+  if (r.diasRestantes <= 0) return (r.diasAgendados > 0) ? 'agendado' : 'concluido';
+  if (!r.dataLimiteGozo) return 'ok';
+  var d = diasAteLimite_(r.dataLimiteGozo);
+  if (d < 0) return 'vencido';
+  if (d <= 30) return 'critico';
+  if (d <= 90) return 'atencao';
+  return 'ok';
+}
+
+// Contadores no topo da aba — o objetivo da tela é bater o olho e já ver
+// quem está com a data limite de gozo apertada.
+function renderFeStats_(linhas) {
+  var c = { critico: 0, atencao: 0, ok: 0, agendado: 0, sem: 0 };
+  linhas.forEach(function(r) {
+    var f = faixaPrazo_(r);
+    if (f === 'vencido' || f === 'critico') c.critico++;
+    else if (f === 'atencao') c.atencao++;
+    else if (f === 'ok') c.ok++;
+    else if (f === 'agendado') c.agendado++;
+    else if (f === 'sem') c.sem++;
+    // 'concluido' fica de fora: tudo gozado não pede ação de ninguém
+  });
+  function tile(cls, num, label) {
+    return '<div class="fe-stat ' + cls + '">' +
+        '<div class="fe-stat-num"' + (num ? '' : ' style="color:var(--gray-300)"') + '>' + num + '</div>' +
+        '<div class="fe-stat-label"><span class="fe-dot"></span>' + label + '</div>' +
+      '</div>';
+  }
+  document.getElementById('feStats').innerHTML =
+    tile('critico', c.critico, 'Vencendo · 30 dias ou menos') +
+    tile('atencao', c.atencao, 'Atenção · 31 a 90 dias') +
+    tile('ok', c.ok, 'Em dia') +
+    tile('agendado', c.agendado, 'Férias agendadas') +
+    tile('sem', c.sem, 'Sem período cadastrado');
+}
+
+// Data limite + contagem regressiva colorida pela faixa.
+function limitePrazoHtml_(r, faixa) {
+  if (faixa === 'sem') return '<span class="status-pill vazio">sem período</span>';
+  var data = r.dataLimiteGozo ? '<span class="fe-limite-data">' + fmtDataBR(r.dataLimiteGozo) + '</span>' : '';
+  if (faixa === 'concluido') {
+    return '<div class="fe-limite">' + data + '<span class="status-pill vazio">concluído</span></div>';
+  }
+  if (faixa === 'agendado') {
+    return '<div class="fe-limite">' + data + '<span class="status-pill tipo-info">tudo agendado</span></div>';
+  }
+  if (!r.dataLimiteGozo) return '—';
+  var d = diasAteLimite_(r.dataLimiteGozo);
+  var pill;
+  if (faixa === 'vencido')      pill = '<span class="status-pill em-atraso">vencido há ' + (-d) + ' dia' + (d === -1 ? '' : 's') + '</span>';
+  else if (faixa === 'critico') pill = '<span class="status-pill em-atraso">faltam ' + d + ' dias</span>';
+  else if (faixa === 'atencao') pill = '<span class="status-pill pendente">faltam ' + d + ' dias</span>';
+  else                          pill = '<span class="status-pill no-prazo">faltam ' + d + ' dias</span>';
+  return '<div class="fe-limite">' + data + pill + '</div>';
+}
+
+// Barra dos 30 dias do período em dois segmentos: escuro = já tirados,
+// claro = agendados pro futuro, vazio = ainda sem programação.
+function saldoDiasHtml_(r) {
+  if (r.diasRestantes === null) return '<span style="color:var(--gray-400)">—</span>';
+  var tirados = r.diasTirados || 0;
+  var agendados = r.diasAgendados || 0;
+  var total = tirados + agendados + r.diasRestantes;
+  if (total <= 0) total = 30;
+  var pctT = Math.min(100, Math.round(tirados * 100 / total));
+  var pctA = Math.min(100 - pctT, Math.round(agendados * 100 / total));
+  var partes = [];
+  if (r.diasRestantes > 0) partes.push('<strong>' + r.diasRestantes + '</strong> sem agendar');
+  if (tirados > 0) partes.push(tirados + ' tirado' + (tirados === 1 ? '' : 's'));
+  if (agendados > 0) partes.push(agendados + ' agendado' + (agendados === 1 ? '' : 's'));
+  if (!partes.length) partes.push('0/' + total);
+  return '<div class="fe-saldo">' +
+      '<div class="fe-barra">' +
+        (pctT ? '<div class="fe-barra-fill" style="width:' + pctT + '%"></div>' : '') +
+        (pctA ? '<div class="fe-barra-agendado" style="width:' + pctA + '%"></div>' : '') +
+      '</div>' +
+      '<span class="fe-saldo-txt">' + partes.join(' · ') + '</span>' +
+    '</div>';
+}
+
 function renderFeriasSub_() {
-  var linhas = state.ferias.feriasSaldos || [];
+  var linhas = (state.ferias.feriasSaldos || []).slice();
+
+  // Quem precisa de ação aparece primeiro: prazo vencido/curto no topo, depois
+  // quem nem período tem, e por último os períodos já concluídos.
+  var ordemFaixa = { vencido: 0, critico: 1, atencao: 2, ok: 3, agendado: 4, sem: 5, concluido: 6 };
+  linhas.sort(function(a, b) {
+    var fa = faixaPrazo_(a), fb = faixaPrazo_(b);
+    if (ordemFaixa[fa] !== ordemFaixa[fb]) return ordemFaixa[fa] - ordemFaixa[fb];
+    var da = diasAteLimite_(a.dataLimiteGozo), db = diasAteLimite_(b.dataLimiteGozo);
+    if (da !== null && db !== null && da !== db) return da - db;
+    return a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+
+  renderFeStats_(linhas);
 
   document.getElementById('feResumoTable').innerHTML =
-    '<thead><tr><th>Pessoa</th><th>Função</th><th>Admissão</th><th>Período aquisitivo</th><th>Data limite de gozo</th><th class="num">Tirados</th><th class="num">Restantes</th><th></th></tr></thead><tbody>' +
+    '<thead><tr><th>Pessoa</th><th>Função</th><th>Admissão</th><th>Período aquisitivo</th><th>Data limite de gozo</th><th>Dias de férias</th><th></th></tr></thead><tbody>' +
     (linhas.length ? linhas.map(function(r) {
-      var urgente = periodoUrgente_(r);
+      var faixa = faixaPrazo_(r);
       var periodoTxt = r.periodoAquisitivoInicio ? (fmtDataBR(r.periodoAquisitivoInicio) + ' – ' + fmtDataBR(r.periodoAquisitivoFim)) : '—';
-      var limiteHtml = r.dataLimiteGozo
-        ? '<span' + (urgente ? ' style="color:var(--danger-600);font-weight:700"' : '') + '>' + fmtDataBR(r.dataLimiteGozo) + '</span>'
-        : '—';
-      var restanteHtml;
-      if (r.diasRestantes === null) {
-        restanteHtml = '<span class="status-pill vazio">sem período cadastrado</span>';
-      } else if (urgente) {
-        restanteHtml = '<span class="status-pill em-atraso">' + r.diasRestantes + ' dias</span>';
-      } else {
-        restanteHtml = '<span class="status-pill ' + (r.diasRestantes > 0 ? 'no-prazo' : 'vazio') + '">' + r.diasRestantes + ' dias</span>';
-      }
       var nomeJs = escJs_(r.nome);
       // Cada linha desta tabela É um período aquisitivo, então o lápis edita
       // o período (ou cadastra um, quando a linha ainda é o placeholder "sem
@@ -2030,19 +2149,18 @@ function renderFeriasSub_() {
       var btnPeriodo = r.id
         ? '<button class="rot-edit-btn" onclick="abrirPeriodoAquisitivoModal_(\'' + escJs_(r.id) + '\',\'' + nomeJs + '\')" title="Editar período aquisitivo">&#9998;</button>' + btnNovoPeriodo
         : btnNovoPeriodo;
-      return '<tr' + (urgente ? ' style="background:var(--danger-100)"' : '') + '>' +
+      return '<tr' + ((faixa === 'vencido' || faixa === 'critico') ? ' style="background:var(--danger-100)"' : '') + '>' +
         '<td><span class="nome-link" onclick="abrirSidebarFerias_(\'' + nomeJs + '\')">' + esc(r.nome) + '</span></td>' +
         '<td>' + esc(r.funcao || '—') + '</td>' +
         '<td>' + (r.dataAdmissao ? fmtDataBR(r.dataAdmissao) : '—') + '</td>' +
         '<td>' + periodoTxt + '</td>' +
-        '<td>' + limiteHtml + '</td>' +
-        '<td class="num">' + (r.diasTirados === null ? '—' : r.diasTirados) + '</td>' +
-        '<td class="num">' + restanteHtml + '</td>' +
+        '<td>' + limitePrazoHtml_(r, faixa) + '</td>' +
+        '<td>' + saldoDiasHtml_(r) + '</td>' +
         '<td style="white-space:nowrap">' +
           btnPeriodo +
           '<button class="rot-edit-btn" onclick="removerTrack_(\'' + nomeJs + '\', \'ferias\')" title="Remover desta lista">&#10005;</button>' +
         '</td></tr>';
-    }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa adicionada ainda.</td></tr>') +
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--gray-400);font-style:italic;padding:16px">Nenhuma pessoa adicionada ainda.</td></tr>') +
     '</tbody>';
 
   document.getElementById('fePessoaList').innerHTML =
@@ -2083,7 +2201,8 @@ function periodoAquisitivoCardHtml_(p, somenteLeitura) {
         (p.limiteCustomizado ? ' <span style="font-size:.65rem;font-weight:700;background:var(--warning-100);color:#92400e;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;vertical-align:middle">definida à mão</span>' : '') +
       '</div></div>' +
       '<div><div class="ferias-ciclo-label">Dias tirados</div><div class="ferias-ciclo-value">' + (p.diasTirados === null ? '—' : p.diasTirados) + '</div></div>' +
-      '<div><div class="ferias-ciclo-label">Dias restantes</div><div class="ferias-ciclo-value"' + destaque + '>' + restanteTxt + '</div></div>' +
+      (p.diasAgendados ? '<div><div class="ferias-ciclo-label">Dias agendados</div><div class="ferias-ciclo-value">' + p.diasAgendados + '</div></div>' : '') +
+      '<div><div class="ferias-ciclo-label">Dias sem agendar</div><div class="ferias-ciclo-value"' + destaque + '>' + restanteTxt + '</div></div>' +
     '</div>';
 }
 

@@ -1697,22 +1697,27 @@ function getFeriasResumo(token) {
   }).sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt-BR'); });
 }
 
-// Soma os dias de férias abatidos de um período aquisitivo. O vínculo é
-// explícito (coluna Periodo_Aquisitivo_ID da aba FERIAS, escolhida por quem
-// lança as férias) — o sistema não tenta adivinhar por data a qual período
-// cada férias pertence, porque isso errava sempre que as férias caíam fora
-// da janela de gozo (antecipadas, por exemplo).
-function diasTiradosDoPeriodo_(feriasPessoa, periodoId) {
-  if (!periodoId) return 0;
-  let total = 0;
+// Soma os dias de férias abatidos de um período aquisitivo, separando o que
+// já foi gozado (tirados) do que está só marcado pro futuro (agendados) —
+// lançamento com início depois de hoje é agendamento; em andamento conta como
+// tirado. O vínculo é explícito (coluna Periodo_Aquisitivo_ID da aba FERIAS,
+// escolhida por quem lança as férias) — o sistema não tenta adivinhar por
+// data a qual período cada férias pertence, porque isso errava sempre que as
+// férias caíam fora da janela de gozo (antecipadas, por exemplo).
+function diasDoPeriodo_(feriasPessoa, periodoId) {
+  const saldo = { tirados: 0, agendados: 0 };
+  if (!periodoId) return saldo;
+  const hoje = fmtData_(new Date());
   feriasPessoa.forEach(function(f) {
-    if (f.periodoAquisitivoId === periodoId) total += f.dias;
+    if (f.periodoAquisitivoId !== periodoId) return;
+    if (f.dataInicio && f.dataInicio > hoje) saldo.agendados += f.dias;
+    else saldo.tirados += f.dias;
   });
-  return total;
+  return saldo;
 }
 
 function periodoAquisitivoComSaldo_(periodo, feriasPessoa) {
-  const diasTirados = diasTiradosDoPeriodo_(feriasPessoa, periodo.id);
+  const dias = diasDoPeriodo_(feriasPessoa, periodo.id);
   return {
     id: periodo.id || '',
     manual: !!periodo.id,
@@ -1720,8 +1725,9 @@ function periodoAquisitivoComSaldo_(periodo, feriasPessoa) {
     periodoAquisitivoFim: periodo.dataFim,
     dataLimiteGozo: periodo.dataLimiteGozo,
     limiteCustomizado: !!periodo.limiteCustomizado,
-    diasTirados: diasTirados,
-    diasRestantes: Math.max(0, 30 - diasTirados)
+    diasTirados: dias.tirados,
+    diasAgendados: dias.agendados,
+    diasRestantes: Math.max(0, 30 - dias.tirados - dias.agendados)
   };
 }
 
@@ -1741,7 +1747,7 @@ function periodosDaPessoa_(nome, ferias, periodosManuais) {
     .sort(function(a, b) { return a.periodoAquisitivoInicio.localeCompare(b.periodoAquisitivoInicio); });
 
   if (!periodos.length) {
-    periodos = [{ id: '', manual: false, periodoAquisitivoInicio: '', periodoAquisitivoFim: '', dataLimiteGozo: '', diasTirados: null, diasRestantes: null }];
+    periodos = [{ id: '', manual: false, periodoAquisitivoInicio: '', periodoAquisitivoFim: '', dataLimiteGozo: '', diasTirados: null, diasAgendados: null, diasRestantes: null }];
   }
   return periodos;
 }
@@ -1771,7 +1777,7 @@ function getFeriasSaldos(token) {
         id: per.id, manual: per.manual,
         periodoAquisitivoInicio: per.periodoAquisitivoInicio, periodoAquisitivoFim: per.periodoAquisitivoFim,
         dataLimiteGozo: per.dataLimiteGozo, limiteCustomizado: per.limiteCustomizado,
-        diasTirados: per.diasTirados, diasRestantes: per.diasRestantes
+        diasTirados: per.diasTirados, diasAgendados: per.diasAgendados, diasRestantes: per.diasRestantes
       });
     });
   });
