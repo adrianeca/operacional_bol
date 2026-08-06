@@ -27,6 +27,14 @@ Webapp em Google Apps Script para gestão operacional da unidade BOL.
 ## Arquivos
 
 - `Migracao.gs` — Script de migração dos dados da planilha original para a nova planilha estruturada. **Já executado.**
+- `limparNomesCombinados()` (em `Code.gs`) — limpeza de execução única: tira "Feriado" da coluna
+  de pessoa da escala de sábado (movendo pra Observação) e desmembra ajustes cujo "Quem sai"
+  tinha dois nomes. Rodar pelo editor do Apps Script e conferir o log.
+- `renomearPessoa(de, para)` (em `Code.gs`) — troca o nome de alguém em todos os campos que
+  guardam pessoa: `HORARIOS`, `ESCALA_SABADO`, as duas listas de rotina, `AJUSTES_HORARIO`
+  (Tags/Quem sai/Quem cobre), `FERIAS`, `PERIODOS_AQUISITIVOS` e `SOLICITACOES_FERIAS`. Só
+  troca célula cujo valor é exatamente o nome antigo — descrição de ajuste, título de evento e
+  observação da escala ficam intactos. Não mexe no `FUNCIONARIOS`, que tem tela própria.
 - `Code.gs` — Backend do webapp.
 - `Index.html` — Frontend do webapp.
 - `LembretesConceito.gs` — Script à parte, de outro projeto Apps Script (lembretes de preenchimento de Conceito de professores, vinculado à planilha de CIAS/BOLSISTAS). Não faz parte do webapp Controle Operacional BOL.

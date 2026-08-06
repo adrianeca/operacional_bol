@@ -2277,3 +2277,168 @@ function popularChecklistDemissaoInicial() {
   Logger.log(adicionadas + ' marcações de checklist de demissão adicionadas.');
   return adicionadas;
 }
+
+// =============================================================================
+// LIMPEZA PONTUAL: nomes combinados no lugar de pessoa
+// =============================================================================
+
+// Dois valores apareciam no seletor de pessoas sem serem gente:
+//
+//   • "Feriado" — usado na coluna Pessoa da escala de sábado pra dizer que
+//     naquele sábado ninguém trabalha. Vai pra Observação, que é onde essa
+//     informação pertence, e a coluna de pessoa fica vazia.
+//
+//   • "Nayara / Rosana" — as duas faltaram em 09/01/2026 e foram lançadas num
+//     ajuste só, mas "Quem sai" é campo de uma pessoa. Vira dois lançamentos
+//     iguais, cada um com a sua pessoa e ID próprio.
+//
+// Rode uma vez pelo editor do Apps Script (Executar → limparNomesCombinados) e
+// confira o log. Rodar de novo não faz nada: as condições já não batem mais.
+// Só mexe na coluna "Quem sai"; "Tags" aceita vários nomes de propósito e o
+// app já a separa sozinho.
+function limparNomesCombinados() {
+  const txt = [
+    'ESCALA_SABADO: ' + moverFeriadoParaObservacao_() + ' linha(s) ajustada(s)',
+    'AJUSTES_HORARIO: ' + separarQuemSaiCombinado_() + ' lançamento(s) desmembrado(s)'
+  ].join('\n');
+  Logger.log(txt);
+  return txt;
+}
+
+function splitNomes_(v) {
+  return String(v || '').split(/\/|,/).map(function(s) { return s.trim(); }).filter(Boolean);
+}
+
+// Colunas ESCALA_SABADO: Mês(1) Ano(2) Data(3) Pessoa1(4) Pessoa2(5) Pessoa3(6) Observação(7)
+function moverFeriadoParaObservacao_() {
+  const sheet = getEscalaSabadoSheet_();
+  const last  = sheet.getLastRow();
+  if (last < 2) return 0;
+
+  const rows = sheet.getRange(2, 1, last - 1, 7).getValues();
+  let mexidas = 0;
+
+  rows.forEach(function(r, i) {
+    const linha = i + 2;
+    let achou = false;
+    [3, 4, 5].forEach(function(col) { // Pessoa 1..3, base 0
+      if (norm_(r[col]) === 'feriado') {
+        sheet.getRange(linha, col + 1).setValue('');
+        achou = true;
+      }
+    });
+    if (!achou) return;
+
+    // Não sobrescreve uma observação que já exista nem repete "Feriado".
+    const obs = String(r[6] || '').trim();
+    if (norm_(obs).indexOf('feriado') === -1) {
+      sheet.getRange(linha, 7).setValue(obs ? obs + ' — Feriado' : 'Feriado');
+    }
+    mexidas++;
+  });
+
+  return mexidas;
+}
+
+// Colunas AJUSTES_HORARIO: ver ajusteFromRow_ — ID(8) e Quem sai(11), base 1.
+function separarQuemSaiCombinado_() {
+  const sheet = getAjustesSheet_();
+  const last  = sheet.getLastRow();
+  if (last < 2) return 0;
+
+  const rows  = sheet.getRange(2, 1, last - 1, 16).getValues();
+  const novas = [];
+  let mexidas = 0;
+
+  rows.forEach(function(r, i) {
+    const nomes = splitNomes_(r[10]); // Quem sai
+    if (nomes.length < 2) return;
+
+    sheet.getRange(i + 2, 11).setValue(nomes[0]);
+    nomes.slice(1).forEach(function(nome) {
+      const nova = r.slice();       // cópia fiel: mesma data, tipo, descrição, anexo
+      nova[7]  = Utilities.getUuid(); // ID próprio, senão dois lançamentos colidem
+      nova[10] = nome;
+      novas.push(nova);
+    });
+    mexidas++;
+  });
+
+  // Escreve as novas só no fim, pra não mexer nas linhas que ainda vou ler.
+  if (novas.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, novas.length, 16).setValues(novas);
+  }
+  return mexidas;
+}
+
+// =============================================================================
+// RENOMEAR PESSOA
+// =============================================================================
+
+// Troca o nome de alguém em todo campo que guarda PESSOA. Só bate em célula
+// cujo valor é exatamente o nome antigo — não sai substituindo pedaço de texto,
+// então descrição de ajuste ("Rafa chegou atrasada"), título de evento e
+// observação da escala ficam intactos: ali o apelido é como se escreve no dia
+// a dia, não cadastro.
+//
+// Rode pelo editor do Apps Script:  renomearPessoa('Rafa', 'Rafaela')
+//
+// Não mexe na aba FUNCIONARIOS — o Cadastro tem tela própria pra isso, e
+// renomear por lá já dispara propagarRenomeacaoPessoa_.
+function renomearPessoa(de, para) {
+  const alvo = norm_(de);
+  const novo = String(para || '').trim();
+  if (!alvo || !novo) throw new Error('Informe o nome atual e o novo.');
+
+  let n = 0;
+  n += trocarPessoaNaColuna_(getHorariosSheet_(), 1, alvo, novo);          // HORARIOS.Nome
+
+  const escala = getEscalaSabadoSheet_();
+  [4, 5, 6].forEach(function(col) {                                        // ESCALA_SABADO.Pessoa1..3
+    n += trocarPessoaNaColuna_(escala, col, alvo, novo);
+  });
+
+  [ABA_ROTINAS, ABA_ROTINAS_OPERACIONAIS].forEach(function(aba) {          // Responsável aceita "A / B"
+    n += trocarPessoaNaLista_(getRotinasSheetDe_(aba), 3, alvo, novo);
+  });
+
+  const aj = getAjustesSheet_();
+  n += trocarPessoaNaLista_(aj, 9, alvo, novo);                            // Tags (vários nomes)
+  n += trocarPessoaNaColuna_(aj, 11, alvo, novo);                          // Quem sai
+  n += trocarPessoaNaColuna_(aj, 12, alvo, novo);                          // Quem cobre
+
+  propagarRenomeacaoPessoa_(de, novo);  // FERIAS, PERIODOS_AQUISITIVOS, SOLICITACOES
+
+  const msg = n + ' célula(s) trocada(s) de "' + de + '" para "' + novo + '".';
+  Logger.log(msg);
+  return msg;
+}
+
+function trocarPessoaNaColuna_(sheet, col, alvo, novo) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const vals = sheet.getRange(2, col, last - 1, 1).getValues();
+  let n = 0;
+  vals.forEach(function(r, i) {
+    if (norm_(r[0]) === alvo) { sheet.getRange(i + 2, col).setValue(novo); n++; }
+  });
+  return n;
+}
+
+// Mesma ideia, mas pra campo que guarda vários nomes numa célula ("Ana / Bia"):
+// troca só o nome que bate e remonta a lista.
+function trocarPessoaNaLista_(sheet, col, alvo, novo) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 0;
+  const vals = sheet.getRange(2, col, last - 1, 1).getValues();
+  let n = 0;
+  vals.forEach(function(r, i) {
+    const nomes = splitNomes_(r[0]);
+    if (!nomes.some(function(x) { return norm_(x) === alvo; })) return;
+    sheet.getRange(i + 2, col).setValue(
+      nomes.map(function(x) { return norm_(x) === alvo ? novo : x; }).join(' / ')
+    );
+    n++;
+  });
+  return n;
+}
