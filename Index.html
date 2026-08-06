@@ -320,6 +320,26 @@ table.data-table {width:100%;border-collapse:collapse;font-size:.83rem}
 .esc-empty {font-size:.78rem;color:var(--gray-400);font-style:italic;padding:6px 0}
 
 .entregas-wrap {overflow-x:auto}
+
+/* Admissão/Demissão têm uma coluna por item do checklist, então a tabela rola
+   bem pra direita — sem fixar o nome você perde de vista de quem é a linha que
+   está marcando. Borda feita com box-shadow: em tabela com border-collapse,
+   a borda da própria célula não acompanha o position:sticky. */
+#admissaoTable th:first-child, #admissaoTable td:first-child,
+#demissaoTable th:first-child, #demissaoTable td:first-child {
+  position:sticky;left:0;z-index:2;min-width:170px;
+  box-shadow:1px 0 0 var(--gray-200);
+}
+#admissaoTable td:first-child, #demissaoTable td:first-child {background:var(--white)}
+#admissaoTable th:first-child, #demissaoTable th:first-child {background:var(--navy-800);z-index:3}
+/* A célula fixa tem fundo próprio, então o hover da linha precisa alcançá-la. */
+#admissaoTable tbody tr:hover td:first-child,
+#demissaoTable tbody tr:hover td:first-child {background:var(--gray-50)}
+/* A linha de "Nenhum resultado." é uma célula só com colspan: fixar não faz
+   sentido e ainda a espremeria em 170px. */
+#admissaoTable td[colspan], #demissaoTable td[colspan] {
+  position:static;box-shadow:none;min-width:0;background:transparent;
+}
 #entTable {min-width:1100px}
 #entTable th.num, #entTable td.num {min-width:110px}
 #entTable td:first-child, #entTable th:first-child {min-width:190px}
@@ -336,7 +356,7 @@ select.status-select {
 .modal-backdrop.open {display:flex}
 .modal-card {
   background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow-md);
-  width:100%;max-width:480px;padding:26px;max-height:90vh;overflow-y:auto;
+  width:100%;max-width:480px;padding:26px;max-height:94vh;overflow-y:auto;
 }
 .modal-card-lg {max-width:620px}
 .modal-title {font-size:1.05rem;font-weight:700;color:var(--navy-800)}
@@ -572,6 +592,7 @@ select.status-select {
       <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
       <button class="tab-btn" data-tab="calendario" onclick="switchTab('calendario')">Calendário</button>
       <button class="tab-btn" data-tab="rotinas" onclick="switchTab('rotinas')">Rotinas</button>
+      <button class="tab-btn" data-tab="rotinaOp" onclick="switchTab('rotinaOp')">Rotina Operacional</button>
       <button class="tab-btn" data-tab="entregas" onclick="switchTab('entregas')">Entregas</button>
       <button class="tab-btn" data-tab="funcionarios" onclick="switchTab('funcionarios')">Funcionários</button>
       <button class="tab-btn" data-tab="secretaria" onclick="switchTab('secretaria')">Secretaria</button>
@@ -586,7 +607,7 @@ select.status-select {
         <div id="dashQuemTrabalha" class="who-list"></div>
       </div>
       <div class="card">
-        <div class="card-title">Eventos da semana</div>
+        <div class="card-title">Próximos eventos</div>
         <div id="dashEventos" class="who-list"></div>
       </div>
       <div class="card">
@@ -644,17 +665,37 @@ select.status-select {
       <div class="card">
         <div class="section-head">
           <div class="card-title" style="margin-bottom:0">Checklist de Rotinas</div>
-          <button class="btn" onclick="abrirRotinaModal()">+ Nova rotina</button>
+          <button class="btn" onclick="abrirRotinaModal('rotinas')">+ Nova rotina</button>
         </div>
         <div class="sub-tabs-nav">
-          <button class="sub-tab-btn active" data-subtab="gerais" onclick="switchRotSubTab('gerais')">Gerais</button>
-          <button class="sub-tab-btn" data-subtab="individuais" onclick="switchRotSubTab('individuais')">Individuais</button>
+          <button class="sub-tab-btn active" data-subtab="gerais" onclick="switchRotSubTab('rotinas','gerais')">Gerais</button>
+          <button class="sub-tab-btn" data-subtab="individuais" onclick="switchRotSubTab('rotinas','individuais')">Individuais</button>
         </div>
         <div id="rotSubGerais" class="sub-tab-panel active">
           <div id="rotinasListGerais" class="rot-board"></div>
         </div>
         <div id="rotSubIndividuais" class="sub-tab-panel">
           <div id="rotinasListIndividuais" class="rot-board"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ ROTINA OPERACIONAL ══════════════ -->
+    <div id="tabRotinaOp" class="tab-panel">
+      <div class="card">
+        <div class="section-head">
+          <div class="card-title" style="margin-bottom:0">Rotina Operacional</div>
+          <button class="btn" onclick="abrirRotinaModal('rotinaOp')">+ Nova rotina</button>
+        </div>
+        <div class="sub-tabs-nav">
+          <button class="sub-tab-btn active" data-subtab="gerais" onclick="switchRotSubTab('rotinaOp','gerais')">Gerais</button>
+          <button class="sub-tab-btn" data-subtab="individuais" onclick="switchRotSubTab('rotinaOp','individuais')">Individuais</button>
+        </div>
+        <div id="rotOpSubGerais" class="sub-tab-panel active">
+          <div id="rotOpListGerais" class="rot-board"></div>
+        </div>
+        <div id="rotOpSubIndividuais" class="sub-tab-panel">
+          <div id="rotOpListIndividuais" class="rot-board"></div>
         </div>
       </div>
     </div>
@@ -911,7 +952,7 @@ select.status-select {
 
 <!-- ── Modal: Rotina ── -->
 <div id="rotinaModal" class="modal-backdrop">
-  <div class="modal-card">
+  <div class="modal-card modal-card-lg">
     <div class="modal-title" id="rotinaModalTitle">Nova rotina</div>
     <label class="modal-label">Frequência</label>
     <select id="rotFrequencia" class="modal-select">
@@ -925,9 +966,15 @@ select.status-select {
       <option value="INDIVIDUAL">INDIVIDUAL</option>
     </select>
     <label class="modal-label">Tarefa</label>
-    <input id="rotTarefa" class="modal-input" type="text">
+    <textarea id="rotTarefa" class="modal-textarea" rows="3" style="min-height:96px"></textarea>
     <label class="modal-label">Responsável</label>
-    <input id="rotResponsavel" class="modal-input" type="text" placeholder="Todas">
+    <div class="tag-picker" onclick="document.getElementById('rotRespInput').focus()">
+      <div class="tag-picker-chips" id="rotRespChips"></div>
+      <input id="rotRespInput" class="tag-picker-input" type="text" autocomplete="off" placeholder="Todas"
+             oninput="abrirRotRespDropdown_()" onfocus="abrirRotRespDropdown_()"
+             onblur="fecharRotRespDropdown_()" onkeydown="onRotRespKeydown_(event)">
+      <div class="tag-picker-dropdown" id="rotRespDropdown"></div>
+    </div>
     <div id="rotinaModalStatus" class="modal-status"></div>
     <div class="modal-actions">
       <button class="btn-ghost btn-danger" id="rotDeleteBtn" style="display:none;color:#fff" onclick="excluirRotina()">Excluir</button>
@@ -1008,14 +1055,15 @@ select.status-select {
     <div class="modal-row">
       <div>
         <label class="modal-label">Quem sai <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
-        <input id="ajQuemSai" class="modal-input" type="text" list="ajPessoaList" placeholder="Quem tinha o horário original">
+        <select id="ajQuemSai" class="modal-select" onchange="onSelectPessoaChange_('ajQuemSai')"></select>
+        <input id="ajQuemSaiNovo" class="modal-input" type="text" placeholder="Nome da nova tag" style="display:none;margin-top:8px">
       </div>
       <div>
         <label class="modal-label">Quem cobre <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
-        <input id="ajQuemCobre" class="modal-input" type="text" list="ajPessoaList" placeholder="Quem assume/cobre">
+        <select id="ajQuemCobre" class="modal-select" onchange="onSelectPessoaChange_('ajQuemCobre')"></select>
+        <input id="ajQuemCobreNovo" class="modal-input" type="text" placeholder="Nome da nova tag" style="display:none;margin-top:8px">
       </div>
     </div>
-    <datalist id="ajPessoaList"></datalist>
     <div class="modal-row">
       <div>
         <label class="modal-label">Horário de <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
@@ -1362,17 +1410,19 @@ function onBootstrap(d) {
   document.getElementById('hEmail').textContent = d.user.email;
   aplicarPermissoesNav_();
 
-  state.dashboard    = d.dashboard;
-  state.rotinas      = d.rotinas;
   state.minhasFerias = d.minhasFerias;
-  if (d.user.isAdmin) {
-    state.eventos        = d.eventos;
-    state.entregas       = d.entregas;
-    state.secretaria     = d.secretaria;
+  var p = paginasDoUsuario_();
+  if (p.dashboard)  state.dashboard = d.dashboard;
+  if (p.rotinas)    state.rotinas   = d.rotinas;
+  if (p.rotinaOp)   state.rotinaOp  = d.rotinaOp;
+  if (p.calendario) state.eventos    = d.eventos;
+  if (p.entregas)   state.entregas   = d.entregas;
+  if (p.secretaria) state.secretaria = d.secretaria;
+  if (p.projetos)   state.projetos   = d.projetos;
+  if (p.funcionarios) {
     state.ferias         = d.ferias;
     state.funcionariosRH = d.funcionariosRH || [];
     state.solicitacoes   = d.solicitacoes;
-    state.projetos       = d.projetos;
   }
   onAllLoaded();
 }
@@ -1393,23 +1443,23 @@ function renderSeguro_(nome, fn) {
 
 function onAllLoaded() {
   clearTimeout(etapaTimer_);
-  var falhas = [
-    renderSeguro_('Dashboard', renderDashboard),
-    renderSeguro_('Rotinas', renderRotinas),
-    renderSeguro_('Minhas Férias', renderMinhasFerias)
-  ];
+  var falhas = [renderSeguro_('Minhas Férias', renderMinhasFerias)];
 
-  if (state.user.isAdmin) {
-    falhas = falhas.concat([
-      renderSeguro_('Calendário', renderCalendario),
-      renderSeguro_('Entregas (filtros)', renderEntregasFiltros),
-      renderSeguro_('Entregas', renderEntregas),
-      renderSeguro_('Secretaria', renderSecretaria),
-      renderSeguro_('Funcionários', renderFuncionariosPagina),
-      renderSeguro_('Solicitações', renderSolicitacoesSub_),
-      renderSeguro_('Projetos', renderProjetos)
-    ]);
-  }
+  var p = paginasDoUsuario_();
+  if (p.dashboard)  falhas.push(renderSeguro_('Dashboard', renderDashboard));
+  if (p.rotinas)    falhas.push(renderSeguro_('Rotinas', renderRotinas));
+  if (p.rotinaOp)   falhas.push(renderSeguro_('Rotina Operacional', renderRotinaOp));
+  if (p.calendario) falhas.push(renderSeguro_('Calendário', renderCalendario));
+  if (p.entregas) falhas = falhas.concat([
+    renderSeguro_('Entregas (filtros)', renderEntregasFiltros),
+    renderSeguro_('Entregas', renderEntregas)
+  ]);
+  if (p.secretaria) falhas.push(renderSeguro_('Secretaria', renderSecretaria));
+  if (p.funcionarios) falhas = falhas.concat([
+    renderSeguro_('Funcionários', renderFuncionariosPagina),
+    renderSeguro_('Solicitações', renderSolicitacoesSub_)
+  ]);
+  if (p.projetos) falhas.push(renderSeguro_('Projetos', renderProjetos));
 
   hideAll();
   document.getElementById('screenMain').style.display = 'flex';
@@ -1422,20 +1472,50 @@ function onAllLoaded() {
 
 // ── TABS ──────────────────────────────────────────────
 
-var ABAS_ADMIN_ = ['calendario', 'entregas', 'funcionarios', 'secretaria', 'projetos'];
+// Todas as abas, na ordem em que aparecem na barra. Todas dependem de chave
+// própria (ACESSOS_PAGINA_ no Code.gs), menos Minhas Férias, que é o
+// autoatendimento da própria pessoa e fica aberta a quem entra no app.
+var ORDEM_ABAS_    = ['dashboard', 'calendario', 'rotinas', 'rotinaOp', 'entregas', 'funcionarios', 'secretaria', 'projetos', 'minhasFerias'];
+var ABAS_RESTRITAS_ = ['dashboard', 'calendario', 'rotinas', 'rotinaOp', 'entregas', 'funcionarios', 'secretaria', 'projetos'];
+
+// O backend já resolveu isso na sessão; aqui é só leitura. Se vier vazio (user
+// antigo em cache, resposta truncada), o padrão é não mostrar nada restrito —
+// errar pro lado de esconder, nunca pro lado de expor.
+function paginasDoUsuario_() {
+  return (state.user && state.user.paginas) || {};
+}
+
+function podeVerAba_(tab) {
+  return ABAS_RESTRITAS_.indexOf(tab) === -1 || !!paginasDoUsuario_()[tab];
+}
+
+// O HTML abre com Dashboard marcado como ativo, mas ele agora é uma aba como
+// qualquer outra — quem não tem a chave abriria numa aba escondida, vendo um
+// painel em branco. Então a primeira aba permitida é quem manda. Minhas Férias
+// fecha a lista e não depende de chave, então isso nunca volta vazio.
+function primeiraAbaVisivel_() {
+  for (var i = 0; i < ORDEM_ABAS_.length; i++) {
+    if (podeVerAba_(ORDEM_ABAS_[i])) return ORDEM_ABAS_[i];
+  }
+  return 'minhasFerias';
+}
 
 function aplicarPermissoesNav_() {
-  if (state.user.isAdmin) return;
-  ABAS_ADMIN_.forEach(function(tab) {
+  ABAS_RESTRITAS_.forEach(function(tab) {
     var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
-    if (btn) btn.style.display = 'none';
+    if (btn) btn.style.display = podeVerAba_(tab) ? '' : 'none';
   });
+  switchTab(primeiraAbaVisivel_());
 }
 
 function switchTab(tab) {
+  // Esconder o botão não basta: switchTab é alcançável por outros caminhos
+  // (console, código antigo). Sem dados carregados, o painel abriria vazio ou
+  // quebrado — melhor não abrir.
+  if (!podeVerAba_(tab)) return;
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
   document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria', projetos:'tabProjetos', minhasFerias:'tabMinhasFerias' };
+  var map = { dashboard:'tabDashboard', calendario:'tabCalendario', rotinas:'tabRotinas', rotinaOp:'tabRotinaOp', entregas:'tabEntregas', funcionarios:'tabFuncionarios', secretaria:'tabSecretaria', projetos:'tabProjetos', minhasFerias:'tabMinhasFerias' };
   document.getElementById(map[tab]).classList.add('active');
 }
 
@@ -1456,10 +1536,10 @@ function renderDashboard() {
   renderQuemTrabalha(d.quemTrabalha);
 
   var evEl = document.getElementById('dashEventos');
-  if (!d.eventosSemana.length) {
-    evEl.innerHTML = '<div class="empty-hint">Nenhum evento nos próximos 7 dias.</div>';
+  if (!d.proximosEventos.length) {
+    evEl.innerHTML = '<div class="empty-hint">Nenhum evento até o fim do mês.</div>';
   } else {
-    evEl.innerHTML = d.eventosSemana.map(function(e) {
+    evEl.innerHTML = d.proximosEventos.map(function(e) {
       return '<div class="who-row"><div><div class="who-name">' + esc(e.titulo) + '</div>' +
         '<div class="who-horario">' + fmtDataBR(e.dataInicio) + (e.dataFim ? ' até ' + fmtDataBR(e.dataFim) : '') + '</div></div>' +
         '<span class="pill" style="background:' + (CATEGORIA_COR[e.categoria] || '#64748b') + '">' + esc(e.categoria) + '</span></div>';
@@ -1777,21 +1857,27 @@ function excluirEvento() {
 
 // ── ROTINAS ───────────────────────────────────────────
 
-function switchRotSubTab(sub) {
-  document.querySelectorAll('.sub-tab-btn').forEach(function(b) { b.classList.toggle('active', b.getAttribute('data-subtab') === sub); });
-  document.getElementById('rotSubGerais').classList.toggle('active', sub === 'gerais');
-  document.getElementById('rotSubIndividuais').classList.toggle('active', sub === 'individuais');
+// O seletor precisa ser preso ao painel: com duas telas de rotina abertas na
+// página, um querySelectorAll('.sub-tab-btn') solto mexeria nos botões da
+// outra — e nos de Funcionários também.
+function switchRotSubTab(chave, sub) {
+  var cfg = cfgRotina_(chave);
+  document.querySelectorAll('#' + cfg.painel + ' .sub-tab-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-subtab') === sub);
+  });
+  document.getElementById(cfg.subGerais).classList.toggle('active', sub === 'gerais');
+  document.getElementById(cfg.subIndividuais).classList.toggle('active', sub === 'individuais');
 }
 
-function rotItemHtml_(r) {
+function rotItemHtml_(r, chave) {
   var tagsHtml = splitResponsaveis_(r.responsavel).map(function(nome) {
     return '<span class="rot-tag" style="background:' + corPessoa_(nome) + '">' + esc(nome) + '</span>';
   }).join('');
   return '<div class="rot-item' + (r.concluido ? ' done' : '') + '">' +
     '<div class="rot-item-top">' +
     '<input type="checkbox" class="rot-check" ' + (r.concluido ? 'checked' : '') +
-    ' onchange="onToggleRotina(\'' + r.id + '\',\'' + r.periodo + '\',this.checked)">' +
-    '<button class="rot-edit-btn" onclick="abrirRotinaModal(\'' + r.id + '\')" title="Editar">&#9998;</button>' +
+    ' onchange="onToggleRotina(\'' + chave + '\',\'' + r.id + '\',\'' + r.periodo + '\',this.checked)">' +
+    '<button class="rot-edit-btn" onclick="abrirRotinaModal(\'' + chave + '\',\'' + r.id + '\')" title="Editar">&#9998;</button>' +
     '</div>' +
     '<div class="rot-tarefa">' + esc(r.tarefa) + '</div>' +
     '<div class="rot-tags">' + tagsHtml + '</div>' +
@@ -1799,15 +1885,39 @@ function rotItemHtml_(r) {
     '</div>';
 }
 
-function renderRotinas() {
-  var gerais = state.rotinas.filter(function(r) { return r.frequencia !== 'INDIVIDUAL'; });
-  var individuais = state.rotinas.filter(function(r) { return r.frequencia === 'INDIVIDUAL'; });
-  renderRotinasGerais_(gerais);
-  renderRotinasIndividuais_(individuais);
+// Rotinas e Rotina Operacional são a mesma tela sobre listas diferentes. Tudo
+// que muda entre elas mora aqui: onde desenhar, onde guardar no state e quais
+// funções do backend chamar.
+var LISTAS_ROTINA_ = {
+  rotinas: {
+    elGerais: 'rotinasListGerais', elIndividuais: 'rotinasListIndividuais',
+    subGerais: 'rotSubGerais', subIndividuais: 'rotSubIndividuais',
+    painel: 'tabRotinas',
+    toggle: 'toggleRotina', save: 'saveRotina', del: 'deleteRotina'
+  },
+  rotinaOp: {
+    elGerais: 'rotOpListGerais', elIndividuais: 'rotOpListIndividuais',
+    subGerais: 'rotOpSubGerais', subIndividuais: 'rotOpSubIndividuais',
+    painel: 'tabRotinaOp',
+    toggle: 'toggleRotinaOperacional', save: 'saveRotinaOperacional', del: 'deleteRotinaOperacional'
+  }
+};
+
+function cfgRotina_(lista) { return LISTAS_ROTINA_[lista] || LISTAS_ROTINA_.rotinas; }
+function getRotinasState_(lista) { return (lista === 'rotinaOp' ? state.rotinaOp : state.rotinas) || []; }
+function setRotinasState_(lista, v) { if (lista === 'rotinaOp') state.rotinaOp = v; else state.rotinas = v; }
+
+function renderRotinas() { renderListaRotina_('rotinas'); }
+function renderRotinaOp() { renderListaRotina_('rotinaOp'); }
+
+function renderListaRotina_(lista) {
+  var todas = getRotinasState_(lista);
+  renderRotinasGerais_(lista, todas.filter(function(r) { return r.frequencia !== 'INDIVIDUAL'; }));
+  renderRotinasIndividuais_(lista, todas.filter(function(r) { return r.frequencia === 'INDIVIDUAL'; }));
 }
 
-function renderRotinasGerais_(lista) {
-  var el = document.getElementById('rotinasListGerais');
+function renderRotinasGerais_(chave, lista) {
+  var el = document.getElementById(cfgRotina_(chave).elGerais);
   var porFreq = {};
   lista.forEach(function(r) { (porFreq[r.frequencia] = porFreq[r.frequencia] || []).push(r); });
 
@@ -1817,14 +1927,14 @@ function renderRotinasGerais_(lista) {
   if (!ordem.length) { el.innerHTML = '<div class="empty-hint">Nenhuma rotina geral cadastrada.</div>'; return; }
 
   el.innerHTML = ordem.map(function(freq) {
-    var itensHtml = porFreq[freq].map(rotItemHtml_).join('');
+    var itensHtml = porFreq[freq].map(function(r) { return rotItemHtml_(r, chave); }).join('');
     return '<div class="rot-section"><div class="rot-section-title">' + esc(freq) + '</div>' +
       '<div class="rot-squares">' + itensHtml + '</div></div>';
   }).join('');
 }
 
-function renderRotinasIndividuais_(lista) {
-  var el = document.getElementById('rotinasListIndividuais');
+function renderRotinasIndividuais_(chave, lista) {
+  var el = document.getElementById(cfgRotina_(chave).elIndividuais);
   if (!lista.length) { el.innerHTML = '<div class="empty-hint">Nenhuma rotina individual cadastrada.</div>'; return; }
 
   var porPessoa = {};
@@ -1835,7 +1945,7 @@ function renderRotinasIndividuais_(lista) {
 
   var pessoas = Object.keys(porPessoa).sort();
   el.innerHTML = pessoas.map(function(nome) {
-    var itensHtml = porPessoa[nome].map(rotItemHtml_).join('');
+    var itensHtml = porPessoa[nome].map(function(r) { return rotItemHtml_(r, chave); }).join('');
     return '<div class="rot-section"><div class="rot-section-title" style="background:' + corPessoa_(nome) + '">' + esc(nome) + '</div>' +
       '<div class="rot-squares">' + itensHtml + '</div></div>';
   }).join('');
@@ -1868,22 +1978,122 @@ function corPessoa_(nome) {
   return PESSOA_COR_MAP_[key];
 }
 
-function onToggleRotina(id, periodo, concluido) {
+function onToggleRotina(chave, id, periodo, concluido) {
+  var cfg = cfgRotina_(chave);
   google.script.run
-    .withSuccessHandler(function(list) { state.rotinas = list; renderRotinas(); })
-    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderRotinas(); })
-    .toggleRotina(TOKEN, id, periodo, concluido);
+    .withSuccessHandler(function(list) { setRotinasState_(chave, list); renderListaRotina_(chave); })
+    .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); renderListaRotina_(chave); })
+    [cfg.toggle](TOKEN, id, periodo, concluido);
 }
 
 var rotinaEditId = null;
 
-function abrirRotinaModal(id) {
+// ── Responsável da rotina: seletor de tags ────────────
+// Uma rotina pode ter mais de um responsável — é gravado como "Ana / Bia", que
+// é o formato que splitResponsaveis_ já lê. Nenhuma tag escolhida significa
+// "Todas", mesmo sentido que o campo tinha quando ficava vazio.
+// As tags saem de getTodasTagsConhecidas_, então uma criada aqui só passa a
+// aparecer pros outros campos depois que a rotina é salva.
+var rotRespSel_ = [];
+
+function renderRotRespChips_() {
+  document.getElementById('rotRespChips').innerHTML = rotRespSel_.map(function(nome, i) {
+    return '<span class="tag-chip" style="background:' + corPessoa_(nome) + '">' + esc(nome) +
+      '<button type="button" class="tag-chip-remove" onclick="removerRotResp_(' + i + ');event.stopPropagation()">×</button></span>';
+  }).join('');
+  // Sem ninguém escolhido o campo vale "Todas"; com chips, o placeholder só atrapalha.
+  document.getElementById('rotRespInput').placeholder = rotRespSel_.length ? '' : 'Todas';
+}
+
+function rotRespDisponiveis_(busca) {
+  var escolhidas = rotRespSel_.map(function(n) { return n.toLowerCase(); });
+  var b = String(busca || '').trim().toLowerCase();
+  return getTodasTagsConhecidas_().filter(function(t) {
+    return escolhidas.indexOf(t.toLowerCase()) === -1 && (!b || t.toLowerCase().indexOf(b) !== -1);
+  });
+}
+
+function adicionarRotResp_(nome) {
+  nome = String(nome || '').trim();
+  if (!nome) return;
+  var repetida = rotRespSel_.some(function(n) { return n.toLowerCase() === nome.toLowerCase(); });
+  if (!repetida) rotRespSel_.push(nome);
+  var inp = document.getElementById('rotRespInput');
+  inp.value = '';
+  inp.focus();
+  renderRotRespChips_();
+  abrirRotRespDropdown_();
+}
+
+function removerRotResp_(i) {
+  rotRespSel_.splice(i, 1);
+  renderRotRespChips_();
+  // A tag removida volta a ser sugerível, mas só vale redesenhar a lista se
+  // ela estiver aberta — senão remover um chip a abriria sem motivo.
+  if (document.getElementById('rotRespDropdown').classList.contains('open')) abrirRotRespDropdown_();
+}
+
+function abrirRotRespDropdown_() {
+  var busca = document.getElementById('rotRespInput').value.trim();
+  var html = rotRespDisponiveis_(busca).map(function(t) {
+    return '<div class="tag-picker-option" onmousedown="event.preventDefault();adicionarRotResp_(\'' + escJs_(t) + '\')">' +
+      '<span class="tag-picker-option-dot" style="background:' + corPessoa_(t) + '"></span>' + esc(t) + '</div>';
+  }).join('');
+
+  // Criar só aparece quando o que foi digitado ainda não existe em lugar nenhum.
+  var jaExiste = getTodasTagsConhecidas_().concat(rotRespSel_).some(function(t) {
+    return t.toLowerCase() === busca.toLowerCase();
+  });
+  if (busca && !jaExiste) {
+    html += '<div class="tag-picker-option tag-picker-option-create" onmousedown="event.preventDefault();adicionarRotResp_(\'' +
+      escJs_(busca) + '\')">+ Criar "' + esc(busca) + '"</div>';
+  }
+  if (!html) {
+    html = '<div class="tag-picker-empty">' + (busca ? 'Nada encontrado' : 'Nenhuma tag disponível') + '</div>';
+  }
+
+  var dd = document.getElementById('rotRespDropdown');
+  dd.innerHTML = html;
+  dd.classList.add('open');
+  // O card do modal rola por conta própria, e a lista é posicionada por cima
+  // dele — em tela baixa ela nasce fora da área visível e fica cortada. Rolar
+  // o card até ela resolve sem depender da altura da janela.
+  dd.scrollIntoView({ block: 'nearest' });
+}
+
+function fecharRotRespDropdown_() {
+  document.getElementById('rotRespDropdown').classList.remove('open');
+}
+
+function onRotRespKeydown_(ev) {
+  var inp = document.getElementById('rotRespInput');
+  if (ev.key === 'Enter') {
+    // Enter pega a primeira sugestão; se não houver, cria o que foi digitado.
+    ev.preventDefault();
+    var busca = inp.value.trim();
+    if (busca) adicionarRotResp_(rotRespDisponiveis_(busca)[0] || busca);
+  } else if (ev.key === 'Backspace' && !inp.value && rotRespSel_.length) {
+    removerRotResp_(rotRespSel_.length - 1);
+  } else if (ev.key === 'Escape') {
+    fecharRotRespDropdown_();
+  }
+}
+
+// O mesmo modal atende as duas listas; guardar de qual ele foi aberto é o que
+// diz pra salvar/excluir qual aba mexer depois.
+var rotinaListaAtual_ = 'rotinas';
+
+function abrirRotinaModal(chave, id) {
+  rotinaListaAtual_ = LISTAS_ROTINA_[chave] ? chave : 'rotinas';
   rotinaEditId = id || null;
-  var r = id ? state.rotinas.filter(function(x){ return x.id===id; })[0] : null;
+  var r = id ? getRotinasState_(rotinaListaAtual_).filter(function(x){ return x.id===id; })[0] : null;
   document.getElementById('rotinaModalTitle').textContent = r ? 'Editar rotina' : 'Nova rotina';
   document.getElementById('rotFrequencia').value = r ? r.frequencia : 'DIÁRIO';
   document.getElementById('rotTarefa').value = r ? r.tarefa : '';
-  document.getElementById('rotResponsavel').value = r ? r.responsavel : '';
+  rotRespSel_ = r ? splitResponsaveis_(r.responsavel).filter(function(n) { return n.toLowerCase() !== 'todas'; }) : [];
+  document.getElementById('rotRespInput').value = '';
+  renderRotRespChips_();
+  fecharRotRespDropdown_();
   document.getElementById('rotinaModalStatus').textContent = '';
   document.getElementById('rotDeleteBtn').style.display = r ? '' : 'none';
   document.getElementById('rotinaModal').classList.add('open');
@@ -1898,23 +2108,25 @@ function salvarRotina() {
     id: rotinaEditId,
     frequencia: document.getElementById('rotFrequencia').value,
     tarefa: tarefa,
-    responsavel: document.getElementById('rotResponsavel').value.trim() || 'Todas'
+    responsavel: rotRespSel_.length ? rotRespSel_.join(' / ') : 'Todas'
   };
 
+  var chave = rotinaListaAtual_;
   status.textContent = 'Salvando...'; status.className = 'modal-status';
   google.script.run
-    .withSuccessHandler(function(list) { state.rotinas = list; fecharModal('rotinaModal'); renderRotinas(); showToast('Rotina salva!', 'success'); })
+    .withSuccessHandler(function(list) { setRotinasState_(chave, list); fecharModal('rotinaModal'); renderListaRotina_(chave); showToast('Rotina salva!', 'success'); })
     .withFailureHandler(function(err) { status.textContent = 'Erro: ' + (err.message||err); status.className='modal-status error'; })
-    .saveRotina(TOKEN, payload);
+    [cfgRotina_(chave).save](TOKEN, payload);
 }
 
 function excluirRotina() {
   if (!rotinaEditId) return;
   if (!window.confirm('Excluir esta rotina? Esta ação não pode ser desfeita.')) return;
+  var chave = rotinaListaAtual_;
   google.script.run
-    .withSuccessHandler(function(list) { state.rotinas = list; fecharModal('rotinaModal'); renderRotinas(); showToast('Rotina desativada.', 'success'); })
+    .withSuccessHandler(function(list) { setRotinasState_(chave, list); fecharModal('rotinaModal'); renderListaRotina_(chave); showToast('Rotina excluída.', 'success'); })
     .withFailureHandler(function(err) { showToast('Erro: ' + (err.message||err), 'error'); })
-    .deleteRotina(TOKEN, rotinaEditId);
+    [cfgRotina_(chave).del](TOKEN, rotinaEditId);
 }
 
 // ── ENTREGAS ──────────────────────────────────────────
@@ -2968,9 +3180,6 @@ function renderAjustesFiltros_() {
     tipos.map(function(t) {
       return '<option value="' + esc(t) + '"' + (t === atualTipo ? ' selected' : '') + '>' + esc(t) + '</option>';
     }).join('');
-
-  document.getElementById('ajPessoaList').innerHTML =
-    getTodasTagsConhecidas_().map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
 }
 
 // Popula o <select> de Tipo do modal com os tipos conhecidos (base + já
@@ -3159,20 +3368,62 @@ var ajusteEditId = null;
 
 // Reúne todos os nomes já usados em qualquer lugar do app (tags de ajustes,
 // responsáveis de rotinas, pessoas da escala de sábado) pra sugerir no seletor.
+// As tags não são um cadastro à parte: são os nomes que já aparecem nos
+// próprios registros salvos. Um nome novo passa a constar aqui assim que o
+// primeiro registro que o usa é gravado.
+// state.secretaria e state.rotinas só existem pra quem tem a chave daquela
+// aba, então cada fonte é lida com guarda — quem tem Projetos sem Secretaria
+// também chama esta função pelo modal de cartão.
 function getTodasTagsConhecidas_() {
   var set = {};
-  (state.secretaria.ajustes || []).forEach(function(a) {
+  var sec = state.secretaria || {};
+  (sec.ajustes || []).forEach(function(a) {
     if (a.quemSai) set[a.quemSai] = true;
     if (a.quemCobre) set[a.quemCobre] = true;
     splitResponsaveis_(a.tags).forEach(function(t) { set[t] = true; });
   });
-  (state.rotinas || []).forEach(function(r) {
+  (state.rotinas || []).concat(state.rotinaOp || []).forEach(function(r) {
     splitResponsaveis_(r.responsavel).forEach(function(t) { if (t.toLowerCase() !== 'todas') set[t] = true; });
   });
-  (state.secretaria.escalaSabado || []).forEach(function(e) {
+  (sec.escalaSabado || []).forEach(function(e) {
     [e.pessoa1, e.pessoa2, e.pessoa3].forEach(function(p) { if (p) set[p] = true; });
   });
-  return Object.keys(set).sort();
+  return Object.keys(set).sort(function(a, b) { return a.localeCompare(b, 'pt-BR'); });
+}
+
+// ── Seletor de pessoa (escolha única) ─────────────────
+// Mesmo padrão do campo Tipo dos ajustes: um <select> com as tags conhecidas
+// mais "+ Nova tag…", que revela um campo de texto ao lado. O input do nome
+// novo é sempre o id do select + "Novo".
+var NOVA_TAG_ = '__nova__';
+
+function popularSelectPessoa_(selectId, valorAtual, rotuloVazio) {
+  var tags = getTodasTagsConhecidas_();
+  // Um registro antigo pode apontar pra alguém que não aparece mais em lugar
+  // nenhum; sem isso o select abriria em branco e a edição apagaria o nome.
+  if (valorAtual && tags.indexOf(valorAtual) === -1) tags.push(valorAtual);
+  var sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">' + esc(rotuloVazio || '—') + '</option>' +
+    tags.map(function(t) { return '<option value="' + esc(t) + '">' + esc(t) + '</option>'; }).join('') +
+    '<option value="' + NOVA_TAG_ + '">+ Nova tag…</option>';
+  sel.value = valorAtual || '';
+
+  var campoNovo = document.getElementById(selectId + 'Novo');
+  campoNovo.value = '';
+  campoNovo.style.display = 'none';
+}
+
+function onSelectPessoaChange_(selectId) {
+  var ehNova = document.getElementById(selectId).value === NOVA_TAG_;
+  var campoNovo = document.getElementById(selectId + 'Novo');
+  campoNovo.style.display = ehNova ? '' : 'none';
+  if (ehNova) { campoNovo.value = ''; campoNovo.focus(); }
+}
+
+function valorSelectPessoa_(selectId) {
+  var sel = document.getElementById(selectId);
+  if (sel.value === NOVA_TAG_) return document.getElementById(selectId + 'Novo').value.trim();
+  return sel.value;
 }
 
 function abrirAjusteModal(id) {
@@ -3183,8 +3434,8 @@ function abrirAjusteModal(id) {
   document.getElementById('ajTipoNovo').value = '';
   document.getElementById('ajTipoNovo').style.display = 'none';
   document.getElementById('ajData').value = a ? a.data : '';
-  document.getElementById('ajQuemSai').value = a ? a.quemSai : '';
-  document.getElementById('ajQuemCobre').value = a ? a.quemCobre : '';
+  popularSelectPessoa_('ajQuemSai', a ? a.quemSai : '', '— Ninguém —');
+  popularSelectPessoa_('ajQuemCobre', a ? a.quemCobre : '', '— Ninguém —');
   document.getElementById('ajHorarioDe').value = a ? a.horarioDe : '';
   document.getElementById('ajHorarioPara').value = a ? a.horarioPara : '';
   document.getElementById('ajStatus').value = a ? a.status : 'Pendente';
@@ -3209,8 +3460,8 @@ function abrirAjusteModal(id) {
 
 function salvarAjusteModal() {
   var data = document.getElementById('ajData').value;
-  var quemSai = document.getElementById('ajQuemSai').value.trim();
-  var quemCobre = document.getElementById('ajQuemCobre').value.trim();
+  var quemSai = valorSelectPessoa_('ajQuemSai');
+  var quemCobre = valorSelectPessoa_('ajQuemCobre');
   var status = document.getElementById('ajusteModalStatus');
   if (!data) { status.textContent = 'Informe a data.'; status.className = 'modal-status error'; return; }
   if (!quemSai && !quemCobre) { status.textContent = 'Informe quem sai e/ou quem cobre.'; status.className = 'modal-status error'; return; }
@@ -3270,8 +3521,11 @@ function excluirAjuste() {
     .deleteAjusteHorario(TOKEN, ajusteEditId);
 }
 
-// Recarrega o dashboard depois de alterações no calendário/secretaria que o afetam
+// Recarrega o dashboard depois de alterações no calendário/secretaria que o afetam.
+// Quem mexe no calendário mas não tem a chave do Dashboard não tem o que
+// recarregar — sem esta saída, a chamada iria ao servidor só pra ser recusada.
 function renderDashboardRefresh() {
+  if (!podeVerAba_('dashboard')) return;
   google.script.run.withSuccessHandler(function(d){ state.dashboard = d; renderDashboard(); }).withFailureHandler(function(){}).getDashboard(TOKEN);
 }
 

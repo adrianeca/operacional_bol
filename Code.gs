@@ -6,8 +6,28 @@ const OPERACIONAL_SHEET_ID = '1I8nss8jH0sv8qCmagWI2bITPEW2JWhi5OUsjVeBA_-M';
 const HUB_SS_ID  = '1eZPbzhzjhjHoPwMhAW5YvOZgYiAvlTYc07dRan6Lyoc'; // mesmo Hub do app de Horas
 const MEU_ACESSO = 'operacionalbol'; // precisa estar liberado na coluna ACESSOS da aba SESSOES do Hub
 
-// E-mails com acesso total ao painel (todas as abas). Quem não está nessa
-// lista é "funcionário comum": só vê Dashboard, Rotinas e Minhas Férias.
+// Acesso por página. A chave base MEU_ACESSO só deixa a pessoa ENTRAR no app;
+// cada aba abaixo exige, ALÉM dela, a sua própria chave na mesma coluna
+// ACESSOS da aba SESSOES do Hub — separadas por vírgula. Ex.: alguém que só
+// cuida da escala recebe "operacionalbol, operacionalbol_secretaria".
+// A chave do objeto é o mesmo nome usado no data-tab do Index.html.
+//
+// Minhas Férias é a única aba fora desta lista: é o autoatendimento da própria
+// pessoa (as férias dela, os pedidos dela), então fica aberta a quem entra.
+const ACESSOS_PAGINA_ = {
+  dashboard:    'operacionalbol_dash',
+  calendario:   'operacionalbol_calendario',
+  rotinas:      'operacionalbol_rotinas',
+  rotinaOp:     'operacionalbol_rotinaope',
+  entregas:     'operacionalbol_entregas',
+  funcionarios: 'operacionalbol_func',
+  secretaria:   'operacionalbol_secretaria',
+  projetos:     'operacionalbol_projetos'
+};
+
+// E-mails com acesso total ao painel: enxergam todas as abas sem precisar de
+// nenhuma das chaves acima. Serve de atalho e de trava de segurança — evita
+// alguém ficar trancado pra fora do próprio painel por uma chave esquecida.
 const ADMIN_EMAILS_ = ['natasha@brasas.com', 'aline.castro@brasas.com', 'adriane@brasas.com', 'bruno@brasas.com', 'peter@brasas.com'];
 
 function ehAdmin_(email) {
@@ -17,6 +37,7 @@ const HUB_URL     = 'https://script.google.com/a/macros/brasas.com/s/AKfycbyF7BA
 
 const ABA_EVENTOS         = 'EVENTOS';
 const ABA_ROTINAS         = 'ROTINAS';
+const ABA_ROTINAS_OPERACIONAIS = 'ROTINAS_OPERACIONAIS';
 const ABA_ROTINAS_LOG     = 'ROTINAS_LOG';
 const ABA_ENTREGAS        = 'ENTREGAS';
 const ABA_HORARIOS        = 'HORARIOS';
@@ -124,17 +145,21 @@ function getBootstrap(token) {
   const user = requireUser_(token);
   const out = {
     user: user,
-    dashboard: getDashboard(token),
-    rotinas: getRotinas(token),
-    minhasFerias: getMinhaFeriasPagina(token)
+    minhasFerias: getMinhaFeriasPagina(token) // aberta a todos
   };
-  if (user.isAdmin) {
-    out.eventos      = getEventos(token);
-    out.entregas     = getEntregas(token);
-    out.secretaria   = getSecretaria(token);
+  // Só busca os dados das abas que esta pessoa realmente abre: quem não tem a
+  // chave nem paga o custo de ler aquelas abas da planilha.
+  const paginas = user.paginas || {};
+  if (paginas.dashboard)  out.dashboard  = getDashboard(token);
+  if (paginas.rotinas)    out.rotinas    = getRotinas(token);
+  if (paginas.rotinaOp)   out.rotinaOp   = getRotinasOperacionais(token);
+  if (paginas.calendario) out.eventos    = getEventos(token);
+  if (paginas.entregas)   out.entregas   = getEntregas(token);
+  if (paginas.secretaria) out.secretaria = getSecretaria(token);
+  if (paginas.projetos)   out.projetos   = getProjetosPagina(token);
+  if (paginas.funcionarios) {
     out.ferias       = getFeriasPagina(token);
     out.solicitacoes = getSolicitacoes(token);
-    out.projetos     = getProjetosPagina(token);
     // A lista do RH vem de outra planilha — se ela falhar, o painel abre
     // mesmo assim (o seletor de novo funcionário fica com "Carregando lista
     // RH...", igual ao comportamento antigo).
@@ -186,11 +211,20 @@ function getSessionUserUncached_(token) {
       throw new Error('Você não tem permissão para acessar o Controle Operacional BOL. Contacte o administrador.');
     }
 
+    // Resolve de uma vez quais abas restritas esta pessoa alcança. Admin passa
+    // em todas; os demais, só nas cujas chaves estiverem na coluna ACESSOS.
+    const isAdmin = ehAdmin_(email);
+    const paginas = {};
+    Object.keys(ACESSOS_PAGINA_).forEach(function(pagina) {
+      paginas[pagina] = isAdmin || acessos.indexOf(ACESSOS_PAGINA_[pagina]) !== -1;
+    });
+
     return {
       email: email,
       nome:  String(row[2] || '').trim(),
       role:  String(row[3] || '').trim().toLowerCase(),
-      isAdmin: ehAdmin_(email)
+      isAdmin: isAdmin,
+      paginas: paginas
     };
   } catch (e) {
     if (e.message && e.message.indexOf('permissão') !== -1) throw e;
@@ -205,14 +239,17 @@ function requireUser_(token) {
   return user;
 }
 
-// Igual requireUser_, mas só deixa passar quem está em ADMIN_EMAILS_. Usado
-// pelas telas/ações que um funcionário comum não deve alcançar (Calendário,
-// Entregas, Secretaria, Cadastro de Funcionários, Férias/Admissão/Demissão de
-// todo mundo, aprovação de solicitações etc.) — funcionário comum só tem
-// Dashboard, Rotinas e a própria aba de Minhas Férias.
-function requireAdmin_(token) {
+// Igual requireUser_, mas exige também a chave da página em questão (ver
+// ACESSOS_PAGINA_). Toda função de leitura ou gravação de uma aba restrita
+// passa por aqui: esconder o botão no Index.html é só conforto visual, quem
+// souber o nome da função ainda consegue chamá-la pelo console — é esta
+// checagem no servidor que de fato barra. Dashboard, Rotinas e Minhas Férias
+// não usam isso; são de todo mundo que entra no app.
+function requirePagina_(token, pagina) {
   const user = requireUser_(token);
-  if (!user.isAdmin) throw new Error('Acesso restrito ao administrador.');
+  if (!user.paginas || !user.paginas[pagina]) {
+    throw new Error('Você não tem acesso a esta página. Contacte o administrador.');
+  }
   return user;
 }
 
@@ -221,7 +258,7 @@ function requireAdmin_(token) {
 // =============================================================================
 
 function getDashboard(token) {
-  requireUser_(token);
+  requirePagina_(token, 'dashboard');
 
   const hoje    = new Date();
   const hojeStr = fmtData_(hoje);
@@ -264,20 +301,28 @@ function getDashboard(token) {
 
   const eventos  = getEventosImpl_();
   const hojeMs   = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).getTime();
-  const limiteMs = hojeMs + 7 * 86400000;
-  const eventosSemana = eventos.filter(function(ev) {
-    if (!ev.dataInicio) return false;
-    const ini = new Date(ev.dataInicio + 'T00:00:00').getTime();
-    const fim = ev.dataFim ? new Date(ev.dataFim + 'T00:00:00').getTime() : ini;
-    return fim >= hojeMs && ini <= limiteMs;
-  });
+  // Próximos eventos: o que ainda não terminou, até o fim do mês vigente. Não
+  // precisa de corte por quantidade — o próprio mês já limita. Um evento que
+  // começou antes e ainda está rolando conta, porque acontece durante o mês.
+  // O Calendário continua mostrando o ano inteiro.
+  const fimDoMesMs = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getTime();
+  const proximosEventos = eventos
+    .filter(function(ev) {
+      if (!ev.dataInicio) return false;
+      const ini = new Date(ev.dataInicio + 'T00:00:00').getTime();
+      const fim = ev.dataFim ? new Date(ev.dataFim + 'T00:00:00').getTime() : ini;
+      return fim >= hojeMs && ini <= fimDoMesMs;
+    })
+    .sort(function(a, b) {
+      return a.dataInicio < b.dataInicio ? -1 : (a.dataInicio > b.dataInicio ? 1 : 0);
+    });
 
   const mesAtual = hoje.getMonth() + 1, anoAtual = hoje.getFullYear();
   const entregasPendentes = getEntregasImpl_().filter(function(e) {
     return e.mes === mesAtual && e.ano === anoAtual && e.status !== 'NO PRAZO';
   });
 
-  return { hoje: hojeStr, quemTrabalha: quemTrabalha, eventosSemana: eventosSemana, entregasPendentes: entregasPendentes };
+  return { hoje: hojeStr, quemTrabalha: quemTrabalha, proximosEventos: proximosEventos, entregasPendentes: entregasPendentes };
 }
 
 // =============================================================================
@@ -348,12 +393,12 @@ function getEventosImpl_() {
 }
 
 function getEventos(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'calendario');
   return getEventosImpl_();
 }
 
 function saveEvento(token, evento) {
-  const user  = requireAdmin_(token);
+  const user  = requirePagina_(token, 'calendario');
   const sheet = getEventosSheet_();
 
   if (evento.id && String(evento.id).indexOf('ferias-') === 0) {
@@ -383,7 +428,7 @@ function saveEvento(token, evento) {
 }
 
 function deleteEvento(token, id) {
-  requireAdmin_(token);
+  requirePagina_(token, 'calendario');
   if (String(id).indexOf('ferias-') === 0) {
     throw new Error('Este evento vem da página Férias — edite ou exclua por lá.');
   }
@@ -402,9 +447,31 @@ function deleteEvento(token, id) {
 // ROTINAS (checklist por período, com histórico em ROTINAS_LOG)
 // =============================================================================
 
-function getRotinasSheet_() {
-  const sheet = getOpSS_().getSheetByName(ABA_ROTINAS);
-  if (!sheet) throw new Error('Aba "' + ABA_ROTINAS + '" não encontrada.');
+// Há duas listas de rotina, idênticas em comportamento: mudam só a aba onde
+// moram e a chave de acesso que exigem. O histórico de conclusão é o mesmo
+// ROTINAS_LOG para as duas — cada linha é identificada pelo ID (UUID) da
+// tarefa, então não há como uma lista enxergar a conclusão da outra.
+const LISTAS_ROTINA_ = {
+  rotinas:  { aba: ABA_ROTINAS,              pagina: 'rotinas'  },
+  rotinaOp: { aba: ABA_ROTINAS_OPERACIONAIS, pagina: 'rotinaOp' }
+};
+
+function listaRotina_(lista) {
+  const cfg = LISTAS_ROTINA_[lista];
+  if (!cfg) throw new Error('Lista de rotina desconhecida: ' + lista);
+  return cfg;
+}
+
+// ROTINAS veio da migração; ROTINAS_OPERACIONAIS nasce vazia na primeira vez
+// que alguém abre a aba, com o mesmo cabeçalho.
+function getRotinasSheetDe_(nomeAba) {
+  const ss = getOpSS_();
+  let sheet = ss.getSheetByName(nomeAba);
+  if (!sheet) {
+    sheet = ss.insertSheet(nomeAba);
+    sheet.appendRow(['Frequência', 'Tarefa', 'Responsável', 'Ativo', 'ID']);
+    return sheet;
+  }
   const header = sheet.getRange(1, 1, 1, 5).getValues()[0];
   if (!header[4]) {
     sheet.getRange(1, 5).setValue('ID');
@@ -416,6 +483,8 @@ function getRotinasSheet_() {
   }
   return sheet;
 }
+
+function getRotinasSheet_() { return getRotinasSheetDe_(ABA_ROTINAS); }
 
 function getRotinasLogSheet_() {
   const ss = getOpSS_();
@@ -454,9 +523,8 @@ function periodoAtual_(frequencia, data) {
   return Utilities.formatDate(data, TZ, 'yyyy-MM-dd');
 }
 
-function getRotinas(token) {
-  requireUser_(token);
-  const rows    = getRotinasSheet_().getDataRange().getValues();
+function rotinasDaLista_(lista) {
+  const rows    = getRotinasSheetDe_(listaRotina_(lista).aba).getDataRange().getValues();
   const logRows = getRotinasLogSheet_().getDataRange().getValues();
   const agora   = new Date();
 
@@ -490,8 +558,7 @@ function getRotinas(token) {
   return out;
 }
 
-function toggleRotina(token, id, periodo, concluido) {
-  const user  = requireUser_(token);
+function toggleRotinaDaLista_(lista, user, id, periodo, concluido) {
   const sheet = getRotinasLogSheet_();
   const rows  = sheet.getDataRange().getValues();
 
@@ -506,14 +573,13 @@ function toggleRotina(token, id, periodo, concluido) {
     sheet.deleteRow(rowIdx);
   }
 
-  return getRotinas(token);
+  return rotinasDaLista_(lista);
 }
 
-function saveRotina(token, rotina) {
-  requireUser_(token);
-  const sheet = getRotinasSheet_();
+function saveRotinaDaLista_(lista, rotina) {
+  const sheet = getRotinasSheetDe_(listaRotina_(lista).aba);
 
-  const frequencia = String(rotina.frequencia || '').trim().toUpperCase();
+  const frequencia  = String(rotina.frequencia || '').trim().toUpperCase();
   const tarefa      = String(rotina.tarefa || '').trim();
   const responsavel = String(rotina.responsavel || 'Todas').trim();
   if (!frequencia || !tarefa) throw new Error('Informe a frequência e a tarefa.');
@@ -523,20 +589,18 @@ function saveRotina(token, rotina) {
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][4]) === String(rotina.id)) {
         sheet.getRange(i + 1, 1, 1, 3).setValues([[frequencia, tarefa, responsavel]]);
-        return getRotinas(token);
+        return rotinasDaLista_(lista);
       }
     }
     throw new Error('Rotina não encontrada.');
   }
 
   sheet.appendRow([frequencia, tarefa, responsavel, 'SIM', Utilities.getUuid()]);
-  return getRotinas(token);
+  return rotinasDaLista_(lista);
 }
 
-// Desativa a tarefa (não apaga a linha, para preservar o histórico em ROTINAS_LOG)
-function deleteRotina(token, id) {
-  requireUser_(token);
-  const sheet = getRotinasSheet_();
+function deleteRotinaDaLista_(lista, id) {
+  const sheet = getRotinasSheetDe_(listaRotina_(lista).aba);
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][4]) === String(id)) {
@@ -544,11 +608,57 @@ function deleteRotina(token, id) {
       break;
     }
   }
-  return getRotinas(token);
+  return rotinasDaLista_(lista);
+}
+
+// ── Rotinas (aba ROTINAS) ─────────────────────────────
+
+function getRotinas(token) {
+  requirePagina_(token, 'rotinas');
+  return rotinasDaLista_('rotinas');
+}
+
+function toggleRotina(token, id, periodo, concluido) {
+  const user = requirePagina_(token, 'rotinas');
+  return toggleRotinaDaLista_('rotinas', user, id, periodo, concluido);
+}
+
+function saveRotina(token, rotina) {
+  requirePagina_(token, 'rotinas');
+  return saveRotinaDaLista_('rotinas', rotina);
+}
+
+function deleteRotina(token, id) {
+  requirePagina_(token, 'rotinas');
+  return deleteRotinaDaLista_('rotinas', id);
+}
+
+// ── Rotina Operacional (aba ROTINAS_OPERACIONAIS) ─────
+// Lista à parte, com chave de acesso própria. Mesmas operações da de cima —
+// o que muda é só de qual aba os dados saem e quem pode chegar até elas.
+
+function getRotinasOperacionais(token) {
+  requirePagina_(token, 'rotinaOp');
+  return rotinasDaLista_('rotinaOp');
+}
+
+function toggleRotinaOperacional(token, id, periodo, concluido) {
+  const user = requirePagina_(token, 'rotinaOp');
+  return toggleRotinaDaLista_('rotinaOp', user, id, periodo, concluido);
+}
+
+function saveRotinaOperacional(token, rotina) {
+  requirePagina_(token, 'rotinaOp');
+  return saveRotinaDaLista_('rotinaOp', rotina);
+}
+
+function deleteRotinaOperacional(token, id) {
+  requirePagina_(token, 'rotinaOp');
+  return deleteRotinaDaLista_('rotinaOp', id);
 }
 
 function deleteFuncionario(token, nome) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const sheet = getFuncionariosSheet_();
   const rows  = sheet.getDataRange().getValues();
   const nomeNorm = norm_(nome);
@@ -680,12 +790,12 @@ function getEntregasImpl_() {
 }
 
 function getEntregas(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'entregas');
   return getEntregasImpl_();
 }
 
 function saveEntregaStatus(token, payload) {
-  const user  = requireAdmin_(token);
+  const user  = requirePagina_(token, 'entregas');
   const sheet = getEntregasSheet_();
 
   const atividade = String(payload.atividade || '').trim();
@@ -731,12 +841,12 @@ function getHorariosImpl_() {
 }
 
 function getHorarios(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   return getHorariosImpl_();
 }
 
 function saveHorario(token, h) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   const sheet = getHorariosSheet_();
 
   const nome = String(h.nome || '').trim();
@@ -786,12 +896,12 @@ function getEscalaSabadoImpl_() {
 }
 
 function getEscalaSabado(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   return getEscalaSabadoImpl_();
 }
 
 function saveEscalaSabado(token, e) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   const sheet = getEscalaSabadoSheet_();
 
   const dataStr = String(e.data || '').trim();
@@ -889,12 +999,12 @@ function getAjustesHorarioImpl_() {
 }
 
 function getAjustesHorario(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   return getAjustesHorarioImpl_();
 }
 
 function saveAjusteHorario(token, a) {
-  const user  = requireAdmin_(token);
+  const user  = requirePagina_(token, 'secretaria');
   const sheet = getAjustesSheet_();
 
   const dataStr = String(a.data || '').trim();
@@ -946,7 +1056,7 @@ function saveAjusteHorario(token, a) {
 }
 
 function deleteAjusteHorario(token, id) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   const sheet = getAjustesSheet_();
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -959,7 +1069,7 @@ function deleteAjusteHorario(token, id) {
 }
 
 function getSecretaria(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'secretaria');
   return {
     horarios: getHorarios(token),
     escalaSabado: getEscalaSabado(token),
@@ -1057,12 +1167,12 @@ function getFuncionariosImpl_() {
 }
 
 function getFuncionarios(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   return getFuncionariosImpl_();
 }
 
 function saveFuncionario(token, f) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const sheet = getFuncionariosSheet_();
 
   const nome = String(f.nome || '').trim();
@@ -1112,7 +1222,7 @@ function propagarRenomeacaoPessoa_(nomeAntigo, nomeNovo) {
 // e status Ativo. Colunas: B=Unidade, C=Nome, F=Função, G=Apelido, H=E-mail,
 // J=DataAdmissão, K=Status.
 function getFuncionariosRH(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   return lerFuncionariosRHOnlineAtivos_();
 }
 
@@ -1151,7 +1261,7 @@ function lerFuncionariosRHOnlineAtivos_() {
 // pessoa 5 vezes. A trava faz o segundo clique esperar o primeiro terminar
 // (e aí ele já encontra todo mundo cadastrado e não adiciona nada).
 function sincronizarFuncionariosRH(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const lock = LockService.getScriptLock();
   lock.waitLock(120000);
   try {
@@ -1353,12 +1463,12 @@ function getPeriodosAquisitivosImpl_() {
 }
 
 function getPeriodosAquisitivos(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   return getPeriodosAquisitivosImpl_();
 }
 
 function savePeriodoAquisitivo(token, p) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const sheet = getPeriodosAquisitivosSheet_();
 
   const pessoa = String(p.pessoa || '').trim();
@@ -1394,7 +1504,7 @@ function savePeriodoAquisitivo(token, p) {
 }
 
 function deletePeriodoAquisitivo(token, id) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const sheet = getPeriodosAquisitivosSheet_();
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -1456,7 +1566,7 @@ function getSolicitacoesImpl_() {
 
 // Todas as solicitações — visão do admin, pra aprovar/recusar.
 function getSolicitacoes(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   return getSolicitacoesImpl_();
 }
 
@@ -1493,7 +1603,7 @@ function solicitarFerias(token, payload) {
 // Quem aprova escolhe na hora; em branco significa "registra as férias mas
 // não abate de nenhum período" (aparece marcado no histórico da pessoa).
 function aprovarSolicitacao(token, id, periodoAquisitivoId) {
-  const admin = requireAdmin_(token);
+  const admin = requirePagina_(token, 'funcionarios');
   const sheet = getSolicitacoesSheet_();
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -1521,7 +1631,7 @@ function aprovarSolicitacao(token, id, periodoAquisitivoId) {
 }
 
 function recusarSolicitacao(token, id, motivo) {
-  const admin = requireAdmin_(token);
+  const admin = requirePagina_(token, 'funcionarios');
   const sheet = getSolicitacoesSheet_();
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -1603,14 +1713,14 @@ function getFeriasImpl_() {
 }
 
 function getFerias(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   return getFeriasImpl_();
 }
 
 // Cria/edita um período de férias já tirado — lançamento manual, feito pelo
 // admin (o fluxo do funcionário é sempre via solicitarFerias + aprovação).
 function saveFeria(token, f) {
-  const user  = requireAdmin_(token);
+  const user  = requirePagina_(token, 'funcionarios');
   const sheet = getFeriasSheet_();
 
   const pessoa     = String(f.pessoa || '').trim();
@@ -1640,7 +1750,7 @@ function saveFeria(token, f) {
 }
 
 function deleteFeria(token, id) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const sheet = getFeriasSheet_();
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -1663,7 +1773,7 @@ function addMeses_(data, meses) {
 // Admissão e Demissão. O saldo de férias em si (períodos aquisitivos) está
 // em getFeriasSaldos, que é o que a sub-aba Férias usa.
 function getFeriasResumo(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const funcionarios = getFuncionariosImpl_();
   const ferias = getFeriasImpl_();
 
@@ -1755,7 +1865,7 @@ function periodosDaPessoa_(nome, ferias, periodosManuais) {
 // Saldo de férias por pessoa rastreada em Férias (admin) — um item por
 // período aquisitivo em aberto (pode ser mais de um por pessoa).
 function getFeriasSaldos(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const funcionarios = getFuncionariosImpl_();
   const ferias = getFeriasImpl_();
   const periodosManuais = getPeriodosAquisitivosImpl_();
@@ -1793,7 +1903,7 @@ function getFeriasSaldos(token) {
 // alguém no Cadastro de Funcionários não mexe nesses flags — a inclusão em
 // cada aba é sempre uma ação explícita e separada.
 function setRastreamento(token, nome, aba, valor) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const col = aba === 'ferias' ? 9 : aba === 'admissao' ? 10 : aba === 'demissao' ? 11 : null;
   if (!col) throw new Error('Aba inválida: ' + aba);
   const sheet = getFuncionariosSheet_();
@@ -1809,7 +1919,7 @@ function setRastreamento(token, nome, aba, valor) {
 }
 
 function getFeriasPagina(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   return {
     funcionarios: getFuncionariosImpl_(),
     ferias: getFeriasImpl_(),
@@ -1841,7 +1951,7 @@ function getChecklistSheet_() {
 // novo) e as marcações já feitas (só as que têm status — item sem marcação
 // não gera linha na planilha).
 function getChecklist(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'funcionarios');
   const rows = getChecklistSheet_().getDataRange().getValues();
   const marcacoes = [];
   for (let i = 1; i < rows.length; i++) {
@@ -1858,7 +1968,7 @@ function getChecklist(token) {
 }
 
 function saveChecklistItem(token, nome, processo, item, status) {
-  const user  = requireAdmin_(token);
+  const user  = requirePagina_(token, 'funcionarios');
   const sheet = getChecklistSheet_();
 
   const nomeNorm = norm_(nome);
@@ -1932,7 +2042,7 @@ function cartaoProjetoFromRow_(r) {
 }
 
 function getProjetosPagina(token) {
-  requireAdmin_(token);
+  requirePagina_(token, 'projetos');
 
   const colRows = getProjetosColunasSheet_().getDataRange().getValues();
   const colunas = [];
@@ -1954,7 +2064,7 @@ function getProjetosPagina(token) {
 }
 
 function saveColunaProjeto(token, c) {
-  requireAdmin_(token);
+  requirePagina_(token, 'projetos');
   const sheet = getProjetosColunasSheet_();
   const nome = String(c.nome || '').trim();
   if (!nome) throw new Error('Informe o nome da coluna.');
@@ -1982,7 +2092,7 @@ function saveColunaProjeto(token, c) {
 // Recusa apagar coluna que ainda tem cartão: excluir junto apagaria trabalho
 // registrado sem a pessoa perceber.
 function deleteColunaProjeto(token, id) {
-  requireAdmin_(token);
+  requirePagina_(token, 'projetos');
   const cartoes = getProjetosCartoesSheet_().getDataRange().getValues();
   let usados = 0;
   for (let i = 1; i < cartoes.length; i++) {
@@ -2003,7 +2113,7 @@ function deleteColunaProjeto(token, id) {
 
 // idsOrdenados = todas as colunas na ordem nova, como a tela mostra.
 function reordenarColunasProjeto(token, idsOrdenados) {
-  requireAdmin_(token);
+  requirePagina_(token, 'projetos');
   const sheet = getProjetosColunasSheet_();
   const rows = sheet.getDataRange().getValues();
   const posicao = {};
@@ -2016,7 +2126,7 @@ function reordenarColunasProjeto(token, idsOrdenados) {
 }
 
 function saveCartaoProjeto(token, c) {
-  const user = requireAdmin_(token);
+  const user = requirePagina_(token, 'projetos');
   const sheet = getProjetosCartoesSheet_();
 
   const titulo = String(c.titulo || '').trim();
@@ -2051,7 +2161,7 @@ function saveCartaoProjeto(token, c) {
 }
 
 function deleteCartaoProjeto(token, id) {
-  requireAdmin_(token);
+  requirePagina_(token, 'projetos');
   const sheet = getProjetosCartoesSheet_();
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
@@ -2067,7 +2177,7 @@ function deleteCartaoProjeto(token, id) {
 // coluna de destino já na ordem final que a tela mostra (incluindo o que
 // acabou de chegar), então uma passada só resolve mover e reordenar.
 function moverCartaoProjeto(token, cartaoId, colunaDestinoId, idsOrdenadosDestino) {
-  requireAdmin_(token);
+  requirePagina_(token, 'projetos');
   const sheet = getProjetosCartoesSheet_();
   const rows = sheet.getDataRange().getValues();
 
